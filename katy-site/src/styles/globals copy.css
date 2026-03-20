@@ -1,0 +1,571 @@
+:root {
+    --bg: #09070d;
+    --bg-soft: rgba(15, 11, 22, 0.72);
+    --panel: rgba(255, 255, 255, 0.06);
+    --panel-strong: rgba(255, 255, 255, 0.08);
+    --panel-border: rgba(255, 255, 255, 0.12);
+    --text: #f6f2fb;
+    --text-soft: rgba(246, 242, 251, 0.74);
+    --text-muted: rgba(246, 242, 251, 0.52);
+    --accent: #a855f7;
+    --accent-soft: rgba(168, 85, 247, 0.18);
+    --linkedin: #0a66c2;
+    --shadow: 0 18px 60px rgba(0, 0, 0, 0.32);
+    --radius-xl: 2rem;
+    --radius-lg: 1.4rem;
+    --max-width: 1200px;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+a {
+    color: inherit;
+    text-decoration: none;
+}
+
+img {
+    display: block;
+}
+
+.app-shell {
+    position: relative;
+    min-height: 100vh;
+    overflow: hidden;
+
+    background: radial-gradient(circle at 20% 10%,
+            rgba(168, 85, 247, 0.25),
+            transparent 40%),
+        radial-gradient(circle at 80% 0%,
+            rgba(139, 92, 246, 0.22),
+            transparent 45%),
+        radial-gradient(circle at 50% 100%,
+            rgba(88, 28, 135, 0.35),
+            transparent 60%),
+        linear-gradient(180deg,
+            #06040a 0%,
+            #0b0613 40%,
+            #0e0818 70%,
+            #120a1f 100%);
+}
+
+.site-frame {
+    position: relative;
+    z-index: 2;
+    width: min(calc(100% - 2rem), var(--max-width));
+    margin: 0 auto;
+    padding: 1.5rem 0 5rem;
+}
+
+
+.page-grid {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background-image:
+        linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+    background-size: 32px 32px;
+    opacity: 0.05;
+    pointer-events: none;
+}
+
+.glass-panel {
+    background: linear-gradient(180deg,
+            rgba(255, 255, 255, 0.06),
+            rgba(168, 85, 247, 0.08));
+
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(16px);
+
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+}
+
+.site-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.25rem;
+    padding: 1rem 1.25rem;
+    border-radius: var(--radius-xl);
+    position: sticky;
+    top: 1rem;
+    z-index: 20;
+}
+#highlights,
+#portfolios {
+  scroll-margin-top: 8rem;
+}
+
+.brand-lockup {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.mountain-mark {
+    width: auto;
+    height: 1.75rem;
+    color: rgba(255, 255, 255, 0.72);
+}
+
+.eyebrow-text {
+    margin: 0;
+    font-size: 0.76rem;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.brand-subtitle {
+    margin: 0.4rem 0 0;
+    font-size: 0.95rem;
+    color: var(--text-soft);
+}
+
+.site-nav {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.9rem;
+}
+
+.nav-link {
+    font-size: 0.95rem;
+    color: var(--text-soft);
+    transition: color 180ms ease;
+}
+
+.nav-link:hover {
+    color: var(--text);
+}
+
+.button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.55rem;
+    min-height: 2.9rem;
+    padding: 0.78rem 1.2rem;
+    border-radius: 1.2rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    transition:
+        transform 180ms ease,
+        background 180ms ease,
+        color 180ms ease,
+        border-color 180ms ease,
+        box-shadow 180ms ease;
+}
+
+.button:hover {
+    transform: translateY(-1px);
+}
+
+.button-primary {
+    background: #fff;
+    color: #0c0912;
+}
+
+.button-primary:hover {
+    background: var(--linkedin);
+    color: white;
+    box-shadow: 0 0 32px rgba(10, 102, 194, 0.44);
+}
+
+.button-secondary {
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text);
+    backdrop-filter: blur(8px);
+}
+
+.button-secondary:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.button-linkedin {
+    border: 1px solid rgba(10, 102, 194, 0.22);
+    background: #fff;
+    color: #0c0912;
+}
+
+.button-linkedin:hover {
+    background: var(--linkedin);
+    color: #fff;
+    box-shadow: 0 0 28px rgba(10, 102, 194, 0.42);
+}
+
+.icon-sm {
+    width: 1rem;
+    height: 1rem;
+}
+
+.hero-section {
+    display: grid;
+    grid-template-columns: 1.05fr 0.95fr;
+    gap: 2rem;
+    align-items: center;
+    padding: 2rem 0 0;
+}
+
+.hero-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 1.4rem;
+}
+
+.hero-title {
+    margin: 0;
+    max-width: 12ch;
+    font-size: clamp(2.8rem, 6vw, 4.8rem);
+    line-height: 0.97;
+    letter-spacing: -0.045em;
+}
+
+.hero-description {
+    max-width: 36rem;
+    margin: 0;
+    font-size: 1rem;
+    line-height: 1.9;
+    color: var(--text-soft);
+}
+
+.button-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.9rem;
+}
+
+.tag-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.7rem;
+    max-width: 34rem;
+}
+
+.pill-tag {
+    padding: 0.42rem 0.8rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-soft);
+    font-size: 0.82rem;
+    backdrop-filter: blur(8px);
+}
+
+.hero-gallery {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.gallery-image {
+    width: 100%;
+    border-radius: var(--radius-xl);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: var(--shadow);
+    object-fit: cover;
+}
+
+.gallery-image--portrait,
+.gallery-image--ski {
+    height: 18rem;
+}
+
+.gallery-image--portrait {
+    object-position: center top;
+}
+
+.gallery-image--ski {
+    object-position: center center;
+}
+
+.gallery-image--wide {
+    grid-column: span 2;
+    height: 13rem;
+    object-position: center 42%;
+}
+
+
+.hero-description {
+    background: linear-gradient(to right,
+            rgba(35, 28, 56, 0.75),
+            rgba(10, 8, 16, 0.2));
+    padding: 0.5rem 1rem;
+    border-radius: 0.75rem;
+}
+
+.highlights-section {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1.5rem;
+    margin-top: 3.5rem;
+}
+
+.feature-card {
+    border-radius: var(--radius-xl);
+    padding: 1.8rem;
+}
+
+.feature-icon-wrap {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 3rem;
+    height: 3rem;
+    margin-bottom: 1.2rem;
+    border-radius: 1.1rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.feature-icon {
+    width: 1.2rem;
+    height: 1.2rem;
+}
+
+.feature-title {
+    margin: 0 0 0.8rem;
+    font-size: 1.7rem;
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+}
+
+.feature-text {
+    margin: 0;
+    color: var(--text-soft);
+    line-height: 1.8;
+}
+
+.portfolio-section {
+    margin-top: 3.5rem;
+    padding-bottom: 2rem;
+}
+
+.section-heading-row {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1.5rem;
+    margin-bottom: 1.6rem;
+}
+
+.section-title {
+    margin: 0.35rem 0 0;
+    font-size: clamp(2.1rem, 4vw, 3.3rem);
+    line-height: 1;
+    letter-spacing: -0.04em;
+}
+
+.section-note {
+    max-width: 28rem;
+    margin: 0;
+    color: rgba(246, 242, 251, 0.62);
+    line-height: 1.8;
+    text-align: right;
+}
+
+.portfolio-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.25rem;
+}
+
+.portfolio-card {
+    display: flex;
+    flex-direction: column;
+    min-height: 17rem;
+    padding: 1.6rem;
+    border-radius: var(--radius-xl);
+
+    border: 1px solid rgba(255, 255, 255, 0.12);
+
+    background: linear-gradient(180deg,
+            rgba(18, 14, 28, 0.55),
+            rgba(12, 10, 20, 0.75));
+
+    backdrop-filter: blur(14px);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+
+    transition:
+        transform 180ms ease,
+        border-color 180ms ease,
+        background 180ms ease;
+}
+
+.portfolio-card:hover {
+    transform: translateY(-4px);
+
+    border-color: rgba(168, 85, 247, 0.35);
+
+    background: linear-gradient(180deg,
+            rgba(28, 20, 45, 0.65),
+            rgba(16, 12, 28, 0.85));
+
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+}
+
+.portfolio-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 2.4rem;
+}
+
+.portfolio-eyebrow {
+    margin: 0 0 0.65rem;
+    font-size: 0.78rem;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.portfolio-title {
+    margin: 0;
+    font-size: 2rem;
+    line-height: 1.05;
+    letter-spacing: -0.04em;
+}
+
+.portfolio-icon-wrap {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 3.2rem;
+    height: 3.2rem;
+    border-radius: 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.portfolio-icon {
+    width: 1.2rem;
+    height: 1.2rem;
+}
+
+.portfolio-description {
+    max-width: 30rem;
+    margin: 0;
+    color: var(--text-soft);
+    line-height: 1.95;
+}
+
+.portfolio-link-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    margin-top: auto;
+    padding-top: 2rem;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.88);
+}
+
+.portfolio-chevron {
+    width: 1rem;
+    height: 1rem;
+}
+
+.hero-image-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    
+    z-index: 0;
+    background:
+        linear-gradient(to bottom,
+            rgba(38, 31, 53, 0.18),
+            rgba(123, 110, 149, 0.38),
+            rgba(255, 255, 255, 0.72)),
+        url("/hero-ski.jpg") center top / cover no-repeat;
+    opacity: 0.18;
+}
+
+.highlights-section,
+.portfolio-section {
+    position: relative;
+}
+
+.highlights-section::before,
+.portfolio-section::before {
+    content: "";
+    position: absolute;
+    inset: -20%;
+    background: radial-gradient(circle,
+            rgba(46, 210, 210, 0.12),
+            transparent 70%);
+    z-index: -1;
+}
+
+@media (max-width: 980px) {
+
+    .site-header,
+    .hero-section,
+    .section-heading-row {
+        grid-template-columns: 1fr;
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .site-header {
+        justify-content: flex-start;
+    }
+
+    .site-nav {
+        width: 100%;
+    }
+
+    .hero-section,
+    .highlights-section,
+    .portfolio-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .section-note {
+        text-align: left;
+    }
+
+    .hero-gallery {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media (max-width: 700px) {
+    .site-frame {
+        width: min(calc(100% - 1.2rem), var(--max-width));
+        padding-top: 1rem;
+    }
+
+    .hero-title {
+        max-width: none;
+    }
+
+    .hero-gallery {
+        grid-template-columns: 1fr;
+    }
+
+    .gallery-image--portrait,
+    .gallery-image--ski,
+    .gallery-image--wide {
+        grid-column: auto;
+        height: 15rem;
+    }
+
+    .feature-title,
+    .portfolio-title {
+        font-size: 1.6rem;
+    }
+}
