@@ -1,0 +1,28 @@
+.app-shell {
+  min-height: 100vh;
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top, rgba(188, 212, 228, 0.22), transparent 34%),
+    linear-gradient(180deg, #f8fbfe 0%, #f3f8fc 52%, #eef5f9 100%);
+  color: #25333d;
+}
+
+.app-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 12% 10%, rgba(255, 255, 255, 0.96), transparent 22%),
+    radial-gradient(circle at 84% 14%, rgba(220, 235, 244, 0.38), transparent 26%);
+  z-index: 0;
+}
+
+.app-shell__glow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), transparent 18%);
+  z-index: 0;
+}
