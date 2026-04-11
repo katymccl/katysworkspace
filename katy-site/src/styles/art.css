@@ -241,6 +241,8 @@
 }
 
 .art-modal-image-wrap {
+  flex: 1;
+  min-height: 0;
   overflow: auto;
   background: rgba(0, 0, 0, 0.3);
 }
@@ -250,7 +252,6 @@
   width: auto;
   height: auto;
   max-width: 100%;
-  max-height: calc(90vh - 8rem);
 }
 
 .art-modal-info {
