@@ -20,8 +20,8 @@ export const artCollections: ArtCollection[] = [
     pieces: [
       {
         id: "paintings-1",
-        src: "/art/paintings/piece-1.jpg",
-        name: "Piece Title",
+        src: "/art/paintings/french-collection/piece1.jpg",
+        name: "La Vie",
         description: "A description of this piece — medium, inspiration, year.",
       },
       {
