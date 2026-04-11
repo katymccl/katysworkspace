@@ -43,7 +43,7 @@ img {
 .app-shell {
 position: relative;
   min-height: 100vh;
-  overflow-x: hidden;
+  overflow-x: clip;
   background:
     radial-gradient(circle at 20% 10%, rgba(168, 85, 247, 0.25), transparent 40%),
     radial-gradient(circle at 80% 0%, rgba(139, 92, 246, 0.22), transparent 45%),
