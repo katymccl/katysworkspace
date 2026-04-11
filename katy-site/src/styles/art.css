@@ -1,0 +1,283 @@
+/* ── Art page shell ── */
+.art-page-shell {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 20% 10%, rgba(168, 85, 247, 0.2), transparent 40%),
+    radial-gradient(circle at 80% 0%, rgba(139, 92, 246, 0.18), transparent 45%),
+    linear-gradient(180deg, #06040a 0%, #0b0613 40%, #0e0818 100%);
+}
+
+.art-page-frame {
+  width: min(calc(100% - 2rem), 1200px);
+  margin: 0 auto;
+  padding: 2.5rem 0 6rem;
+}
+
+/* ── Header ── */
+.art-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  transition: color 160ms ease;
+  margin-bottom: 2.5rem;
+}
+
+.art-back-link:hover {
+  color: var(--text);
+}
+
+.art-page-header {
+  margin-bottom: 4rem;
+}
+
+.art-page-title-block {
+  display: flex;
+  align-items: center;
+  gap: 1.1rem;
+  margin-bottom: 1rem;
+}
+
+.art-page-icon-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.2rem;
+  height: 3.2rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.art-page-title {
+  margin: 0.2rem 0 0;
+  font-size: clamp(2.2rem, 4vw, 3.6rem);
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.art-page-subtitle {
+  margin: 0;
+  max-width: 40rem;
+  color: var(--text-soft);
+  line-height: 1.8;
+  font-size: 1.05rem;
+}
+
+/* ── Collections list ── */
+.art-collections-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4rem;
+}
+
+/* ── Single collection ── */
+.art-collection-header {
+  margin-bottom: 1.25rem;
+}
+
+.art-collection-title {
+  margin: 0 0 0.3rem;
+  font-size: clamp(1.4rem, 2.5vw, 1.9rem);
+  letter-spacing: -0.03em;
+}
+
+.art-collection-desc {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+/* ── Horizontal scroll gallery ── */
+.art-gallery-scroll {
+  display: flex;
+  gap: 1rem;
+  overflow-x: auto;
+  padding-bottom: 1rem;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(168, 85, 247, 0.35) transparent;
+}
+
+.art-gallery-scroll::-webkit-scrollbar {
+  height: 4px;
+}
+
+.art-gallery-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.art-gallery-scroll::-webkit-scrollbar-thumb {
+  background: rgba(168, 85, 247, 0.35);
+  border-radius: 2px;
+}
+
+/* ── Thumbnail ── */
+.art-thumb {
+  position: relative;
+  flex-shrink: 0;
+  width: 260px;
+  height: 260px;
+  border-radius: 1.2rem;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+  scroll-snap-align: start;
+  padding: 0;
+  transition: border-color 180ms ease, transform 180ms ease;
+}
+
+.art-thumb:hover {
+  border-color: rgba(168, 85, 247, 0.45);
+  transform: translateY(-2px);
+}
+
+.art-thumb:hover .art-thumb-overlay {
+  opacity: 1;
+}
+
+.art-thumb-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Placeholder style when image hasn't loaded / is missing */
+.art-thumb-image:not([src]),
+.art-thumb-image[src=""] {
+  background: linear-gradient(
+    135deg,
+    rgba(168, 85, 247, 0.15),
+    rgba(88, 28, 135, 0.25)
+  );
+}
+
+.art-thumb-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  padding: 1rem;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.72) 0%, transparent 55%);
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.art-thumb-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+/* ── Modal backdrop ── */
+.art-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgba(0, 0, 0, 0.82);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: modal-fade-in 160ms ease;
+}
+
+@keyframes modal-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ── Modal container ── */
+.art-modal-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  max-width: min(760px, 100%);
+  max-height: calc(100vh - 3rem);
+  border-radius: 1.6rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(180deg, rgba(22, 16, 36, 0.96), rgba(12, 9, 22, 0.98));
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  overflow: hidden;
+  animation: modal-scale-in 160ms ease;
+}
+
+@keyframes modal-scale-in {
+  from { transform: scale(0.96); opacity: 0; }
+  to   { transform: scale(1);    opacity: 1; }
+}
+
+.art-modal-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.5);
+  color: var(--text-soft);
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease;
+  padding: 0;
+}
+
+.art-modal-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+}
+
+.art-modal-image-wrap {
+  overflow: hidden;
+  max-height: 65vh;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.art-modal-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.art-modal-info {
+  padding: 1.4rem 1.6rem 1.6rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.art-modal-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.3rem;
+  letter-spacing: -0.025em;
+}
+
+.art-modal-description {
+  margin: 0;
+  color: var(--text-soft);
+  line-height: 1.8;
+  font-size: 0.95rem;
+}
+
+@media (max-width: 600px) {
+  .art-thumb {
+    width: 200px;
+    height: 200px;
+  }
+
+  .art-modal-container {
+    border-radius: 1.2rem;
+  }
+}
