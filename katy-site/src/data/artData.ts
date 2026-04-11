@@ -20,20 +20,21 @@ export const artCollections: ArtCollection[] = [
     pieces: [
       {
         id: "paintings-1",
-        src: "/art/paintings/piece-1.jpg",
-        name: "Piece Title",
+        src: "/art/paintings/french-collection/piece1.jpg",
+        name: "La Vie",
         description: "A description of this piece — medium, inspiration, year.",
       },
       {
         id: "paintings-2",
-        src: "/art/paintings/piece-2.jpg",
-        name: "Piece Title",
-        description: "A description of this piece — medium, inspiration, year.",
+        src: "/art/paintings/french-collection/piece2.jpg",
+        name: "Les Temps",
+        // eslint-disable-next-line max-len
+        description: "What is time? If both you and I are the observer, who is observing us? Acrylic on canvas, 2023.",
       },
       {
         id: "paintings-3",
-        src: "/art/paintings/piece-3.jpg",
-        name: "Piece Title",
+        src: "/art/paintings/french-collection/piece3.jpg",
+        name: "Tout et Rien",
         description: "A description of this piece — medium, inspiration, year.",
       },
     ],
