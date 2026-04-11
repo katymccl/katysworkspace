@@ -120,8 +120,8 @@
 .art-thumb {
   position: relative;
   flex-shrink: 0;
-  width: 260px;
   height: 260px;
+  width: auto;
   border-radius: 1.2rem;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -142,15 +142,15 @@
 }
 
 .art-thumb-image {
-  width: 100%;
   height: 100%;
-  object-fit: cover;
+  width: auto;
   display: block;
 }
 
 /* Placeholder style when image hasn't loaded / is missing */
 .art-thumb-image:not([src]),
 .art-thumb-image[src=""] {
+  width: 260px;
   background: linear-gradient(
     135deg,
     rgba(168, 85, 247, 0.15),
@@ -241,16 +241,17 @@
 }
 
 .art-modal-image-wrap {
-  overflow: hidden;
-  max-height: 65vh;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
   background: rgba(0, 0, 0, 0.3);
 }
 
 .art-modal-image {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
   display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
 }
 
 .art-modal-info {
@@ -273,8 +274,7 @@
 
 @media (max-width: 600px) {
   .art-thumb {
-    width: 200px;
-    height: 200px;
+    height: 180px;
   }
 
   .art-modal-container {
