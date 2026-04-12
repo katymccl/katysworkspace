@@ -1,14 +1,12 @@
-import { useState, type JSX } from "react";
-import type { ArtCollection as ArtCollectionType, ArtPiece } from "../../data/artData";
-import ArtModal from "./ArtModal";
+import { type JSX } from "react";
+import { Link } from "react-router-dom";
+import type { ArtCollection as ArtCollectionType } from "../../data/artData";
 
 interface ArtCollectionProps {
   collection: ArtCollectionType;
 }
 
 export default function ArtCollection({ collection }: ArtCollectionProps): JSX.Element {
-  const [selected, setSelected] = useState<ArtPiece | null>(null);
-
   return (
     <section className="art-collection">
       <div className="art-collection-header">
@@ -17,24 +15,20 @@ export default function ArtCollection({ collection }: ArtCollectionProps): JSX.E
       </div>
 
       <div className="art-gallery-scroll">
-        {collection.pieces.map((piece) => (
-          <button
-            key={piece.id}
+        {collection.subCollections.map((subCollection) => (
+          <Link
+            key={subCollection.id}
+            to={`/art/${collection.id}/${subCollection.id}`}
             className="art-thumb"
-            onClick={() => setSelected(piece)}
-            aria-label={`View ${piece.name}`}
+            aria-label={`View ${subCollection.title}`}
           >
-            <img src={piece.src} alt={piece.name} className="art-thumb-image" />
+            <img src={subCollection.thumbnail} alt={subCollection.title} className="art-thumb-image" />
             <span className="art-thumb-overlay">
-              <span className="art-thumb-name">{piece.name}</span>
+              <span className="art-thumb-name">{subCollection.title}</span>
             </span>
-          </button>
+          </Link>
         ))}
       </div>
-
-      {selected && (
-        <ArtModal piece={selected} onClose={() => setSelected(null)} />
-      )}
     </section>
   );
 }

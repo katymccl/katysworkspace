@@ -9,6 +9,8 @@ import Hero from "./components/Hero";
 import Highlights from "./components/Highlights";
 import PortfolioSection from "./components/PortfolioSection";
 import ArtPage from "./pages/ArtPage";
+import WritingPage from "./pages/WritingPage";
+import SubCollectionDetailPage from "./pages/SubCollectionDetailPage";
 
 function Home(): JSX.Element {
   return (
@@ -30,6 +32,8 @@ export default function App(): JSX.Element {
     <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/art" element={<ArtPage />} />
+      <Route path="/writing" element={<WritingPage />} />
+      <Route path="/art/:collectionId/:subCollectionId" element={<SubCollectionDetailPage />} />
     </Routes>
   );
 }
