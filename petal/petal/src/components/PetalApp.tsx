@@ -19,6 +19,7 @@ import { Bucket, Task } from '@/types'
 import TaskCard from './TaskCard'
 import DroppableBucket from './DroppableBucket'
 import AddTaskRow from './AddTaskRow'
+import ProjectsTab from './ProjectsTab'
 
 const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
@@ -47,6 +48,8 @@ export default function PetalApp() {
     dailyTasks, backlogTasks, thisMonthTasks, futureTasks,
     addTask, removeTask, toggleTask, editTask, moveTask, reorderTasks,
     addCategory, removeCategory,
+    addProject, removeProject, editProject,
+    addStep, removeStep, toggleStep, editStep,
   } = usePetal()
 
   const [tab, setTab] = useState<Tab>('daily')
@@ -330,9 +333,16 @@ export default function PetalApp() {
 
           {/* ── PROJECTS TAB ── */}
           {tab === 'projects' && (
-            <div>
-              <p className="hint">big goals broken into little steps 🌸 <em>(coming soon!)</em></p>
-            </div>
+            <ProjectsTab
+              projects={state.projects ?? []}
+              onAdd={addProject}
+              onRemove={removeProject}
+              onEdit={editProject}
+              onAddStep={addStep}
+              onRemoveStep={removeStep}
+              onToggleStep={toggleStep}
+              onEditStep={editStep}
+            />
           )}
         </div>
       </div>

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { AppState, Task, Bucket } from '@/types'
+import { AppState, Task, Bucket, Project, ProjectStep } from '@/types'
 
 const EMOJIS = ['🌸', '🌷', '💐', '🌺', '🩷', '✨', '🎀', '🍓', '🫧', '🌙']
 const randomEmoji = () => EMOJIS[Math.floor(Math.random() * EMOJIS.length)]
@@ -10,6 +10,7 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2)
 const DEFAULT_STATE: AppState = {
   tasks: [],
   categories: ['personal', 'work', 'errands', 'ideas'],
+  projects: [],
 }
 
 export function usePetal() {
@@ -23,7 +24,7 @@ export function usePetal() {
     fetch('/api/state')
       .then(r => r.json())
       .then((data: AppState) => {
-        setState(data)
+        setState({ ...DEFAULT_STATE, ...data, projects: data.projects ?? [] })
         setLoading(false)
       })
       .catch(() => setLoading(false))
@@ -115,6 +116,79 @@ export function usePetal() {
     }))
   }, [update])
 
+  // Project mutations
+  const addProject = useCallback((name: string, description: string) => {
+    const project: Project = {
+      id: uid(),
+      name: name.trim(),
+      emoji: randomEmoji(),
+      description: description.trim(),
+      steps: [],
+      createdAt: Date.now(),
+    }
+    update(s => ({ ...s, projects: [...(s.projects ?? []), project] }))
+  }, [update])
+
+  const removeProject = useCallback((id: string) => {
+    update(s => ({ ...s, projects: (s.projects ?? []).filter(p => p.id !== id) }))
+  }, [update])
+
+  const editProject = useCallback((id: string, name: string, description: string) => {
+    update(s => ({
+      ...s,
+      projects: (s.projects ?? []).map(p =>
+        p.id === id ? { ...p, name: name.trim(), description: description.trim() } : p
+      ),
+    }))
+  }, [update])
+
+  const addStep = useCallback((projectId: string, text: string) => {
+    const step: ProjectStep = {
+      id: uid(),
+      text: text.trim(),
+      done: false,
+      emoji: randomEmoji(),
+      createdAt: Date.now(),
+    }
+    update(s => ({
+      ...s,
+      projects: (s.projects ?? []).map(p =>
+        p.id === projectId ? { ...p, steps: [...p.steps, step] } : p
+      ),
+    }))
+  }, [update])
+
+  const removeStep = useCallback((projectId: string, stepId: string) => {
+    update(s => ({
+      ...s,
+      projects: (s.projects ?? []).map(p =>
+        p.id === projectId ? { ...p, steps: p.steps.filter(st => st.id !== stepId) } : p
+      ),
+    }))
+  }, [update])
+
+  const toggleStep = useCallback((projectId: string, stepId: string) => {
+    update(s => ({
+      ...s,
+      projects: (s.projects ?? []).map(p =>
+        p.id === projectId
+          ? { ...p, steps: p.steps.map(st => st.id === stepId ? { ...st, done: !st.done } : st) }
+          : p
+      ),
+    }))
+  }, [update])
+
+  const editStep = useCallback((projectId: string, stepId: string, text: string) => {
+    update(s => ({
+      ...s,
+      projects: (s.projects ?? []).map(p =>
+        p.id === projectId
+          ? { ...p, steps: p.steps.map(st => st.id === stepId ? { ...st, text: text.trim() } : st) }
+          : p
+      ),
+    }))
+  }, [update])
+
   const dailyTasks = state.tasks.filter(t => t.bucket === 'daily')
   const backlogTasks = state.tasks.filter(t => t.bucket === 'backlog')
   const thisMonthTasks = state.tasks.filter(t => t.bucket === 'thisMonth')
@@ -136,5 +210,12 @@ export function usePetal() {
     reorderTasks,
     addCategory,
     removeCategory,
+    addProject,
+    removeProject,
+    editProject,
+    addStep,
+    removeStep,
+    toggleStep,
+    editStep,
   }
 }
