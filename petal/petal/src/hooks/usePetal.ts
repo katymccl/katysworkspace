@@ -18,6 +18,7 @@ export function usePetal() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const hasLoaded = useRef(false) // guard: never save before first load completes
 
   // Load from API on mount
   useEffect(() => {
@@ -25,13 +26,18 @@ export function usePetal() {
       .then(r => r.json())
       .then((data: AppState) => {
         setState({ ...DEFAULT_STATE, ...data, projects: data.projects ?? [] })
+        hasLoaded.current = true // only NOW is it safe to save
         setLoading(false)
       })
-      .catch(() => setLoading(false))
+      .catch(() => {
+        hasLoaded.current = true // even on error, allow saves
+        setLoading(false)
+      })
   }, [])
 
-  // Debounced save
+  // Debounced save - will not fire until after initial load completes
   const save = useCallback((newState: AppState) => {
+    if (!hasLoaded.current) return // never overwrite DB with default state
     if (saveTimer.current) clearTimeout(saveTimer.current)
     setSaving(true)
     saveTimer.current = setTimeout(() => {
