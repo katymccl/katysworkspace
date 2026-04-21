@@ -7,6 +7,7 @@ const KEY = 'petal:state'
 const DEFAULT_STATE: AppState = {
   tasks: [],
   categories: ['personal', 'work', 'errands', 'ideas'],
+  projects: [],
 }
 
 export async function GET() {
