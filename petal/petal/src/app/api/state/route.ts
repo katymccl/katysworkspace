@@ -51,17 +51,6 @@ export async function GET() {
 
     const key = `petal:state:${userId}`
     const data = await redisGet(key)
-
-    // migration: if no user-specific data yet, check for legacy key
-    if (!data) {
-      const legacy = await redisGet('petal:state')
-      if (legacy) {
-        // migrate legacy data to this user's key on first login
-        await redisSet(key, legacy)
-        return NextResponse.json(legacy)
-      }
-    }
-
     return NextResponse.json(data ?? DEFAULT_STATE)
   } catch (err) {
     console.error('[petal] GET error:', err)
