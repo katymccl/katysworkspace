@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { UserButton, useUser } from '@clerk/nextjs'
 import {
   DndContext,
   DragEndEvent,
@@ -52,6 +53,7 @@ export default function PetalApp() {
     addStep, removeStep, toggleStep, editStep,
   } = usePetal()
 
+  const { user } = useUser()
   const [tab, setTab] = useState<Tab>('daily')
   const [activeTask, setActiveTask] = useState<Task | null>(null)
   const [activeFilter, setActiveFilter] = useState('all')
@@ -143,8 +145,13 @@ export default function PetalApp() {
         <div className="inner">
           {/* header */}
           <div className="header">
-            <div className="bow">🌸</div>
+            <div className="header-top">
+              <div style={{ width: 32 }} />
+              <div className="bow">🌸</div>
+              <UserButton afterSignOutUrl="/sign-in" />
+            </div>
             <h1>petal</h1>
+            {user && <p className="welcome">hi {user.firstName || user.emailAddresses[0]?.emailAddress?.split('@')[0]} 🌷</p>}
             <p className="date">{TODAY}</p>
             {saving && <p className="saving">saving…</p>}
           </div>
@@ -383,6 +390,8 @@ export default function PetalApp() {
           padding: 28px 16px 80px;
         }
         .header { text-align: center; margin-bottom: 24px; }
+        .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; }
+        .welcome { font-size: 13px; color: #e91e8c; opacity: 0.8; margin-top: 2px; }
         .bow { font-size: 34px; margin-bottom: 2px; }
         h1 { font-size: 30px; font-weight: 700; color: #c2185b; font-style: italic; letter-spacing: -0.5px; }
         .date { font-size: 13px; color: #e91e8c; opacity: 0.7; margin-top: 4px; }
