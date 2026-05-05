@@ -1,14 +1,15 @@
 'use client'
 
 import { useState } from 'react'
-import { Bucket } from '@/types'
+import { Bucket, Priority } from '@/types'
 
 interface Props {
   bucket: Bucket
   categories?: string[]
-  onAdd: (text: string, category?: string | null) => void
+  onAdd: (text: string, category?: string | null, priority?: Priority) => void
   placeholder?: string
   showCategoryPicker?: boolean
+  showPriorityPicker?: boolean
   disabled?: boolean
   disabledMsg?: string
 }
@@ -19,16 +20,19 @@ export default function AddTaskRow({
   onAdd,
   placeholder = 'add a task...',
   showCategoryPicker = false,
+  showPriorityPicker = false,
   disabled = false,
   disabledMsg,
 }: Props) {
   const [text, setText] = useState('')
   const [cat, setCat] = useState('')
+  const [priority, setPriority] = useState<Priority>(null)
 
   const submit = () => {
     if (!text.trim() || disabled) return
-    onAdd(text.trim(), showCategoryPicker ? (cat || null) : undefined)
+    onAdd(text.trim(), showCategoryPicker ? (cat || null) : undefined, priority)
     setText('')
+    setPriority(null)
   }
 
   return (
@@ -53,6 +57,18 @@ export default function AddTaskRow({
         placeholder={disabled ? (disabledMsg ?? placeholder) : placeholder}
         disabled={disabled}
       />
+      {showPriorityPicker && (
+        <div className="priority-picker">
+          {([1, 2, 3] as const).map(p => (
+            <button
+              key={p}
+              className={`pri-opt ${priority === p ? 'active' : ''}`}
+              onClick={() => setPriority(priority === p ? null : p)}
+              title={`priority ${p}`}
+            >{p}</button>
+          ))}
+        </div>
+      )}
       <button className="add-btn" onClick={submit} disabled={disabled}>+</button>
 
       <style jsx>{`
@@ -87,6 +103,32 @@ export default function AddTaskRow({
         .add-input:disabled {
           opacity: 0.5;
           cursor: not-allowed;
+        }
+        .priority-picker {
+          display: flex;
+          gap: 3px;
+          flex-shrink: 0;
+        }
+        .pri-opt {
+          width: 26px;
+          height: 26px;
+          border-radius: 8px;
+          border: 1.5px solid rgba(244,143,177,0.35);
+          background: rgba(255,255,255,0.7);
+          color: #c2185b;
+          font-size: 11px;
+          font-weight: 800;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: all 0.14s;
+        }
+        .pri-opt:hover { border-color: #e91e8c; }
+        .pri-opt.active {
+          background: linear-gradient(135deg, #f48fb1, #e91e8c);
+          color: #fff;
+          border-color: transparent;
         }
         .add-btn {
           width: 42px;

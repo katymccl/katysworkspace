@@ -2,7 +2,7 @@
 
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { Task, Bucket } from '@/types'
+import { Task, Bucket, Priority } from '@/types'
 import TaskCard from './TaskCard'
 
 interface Props {
@@ -12,6 +12,7 @@ interface Props {
   onRemove: (id: string) => void
   onEdit: (id: string, text: string) => void
   onMove: (id: string, bucket: Bucket) => void
+  onPriority?: (id: string, priority: Priority) => void
   showCategory?: boolean
   moveTargets?: Bucket[]
   emptyText?: string
@@ -24,6 +25,7 @@ export default function DroppableBucket({
   onRemove,
   onEdit,
   onMove,
+  onPriority,
   showCategory = false,
   moveTargets = [],
   emptyText = 'drop tasks here',
@@ -47,6 +49,7 @@ export default function DroppableBucket({
               onRemove={() => onRemove(task.id)}
               onEdit={(text) => onEdit(task.id, text)}
               onMove={(b) => onMove(task.id, b)}
+              onPriority={onPriority ? (p) => onPriority(task.id, p) : undefined}
               showCategory={showCategory}
               moveTargets={moveTargets}
             />

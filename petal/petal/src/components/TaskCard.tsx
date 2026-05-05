@@ -1,15 +1,22 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Task, Bucket } from '@/types'
+import { Task, Bucket, Priority } from '@/types'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 
 const BUCKET_LABELS: Record<Bucket, string> = {
-  daily: "today's 3",
+  daily: "today",
+  thisWeek: 'this week',
   backlog: 'brain dump',
   thisMonth: 'this month',
   future: 'future',
+}
+
+const PRIORITY_COLORS: Record<number, { bg: string; color: string; label: string }> = {
+  1: { bg: 'rgba(233,30,140,0.15)', color: '#c2185b', label: '1' },
+  2: { bg: 'rgba(244,143,177,0.2)', color: '#e91e8c', label: '2' },
+  3: { bg: 'rgba(252,228,236,0.8)', color: '#f48fb1', label: '3' },
 }
 
 interface Props {
@@ -18,6 +25,7 @@ interface Props {
   onRemove: () => void
   onEdit: (text: string) => void
   onMove?: (bucket: Bucket) => void
+  onPriority?: (priority: Priority) => void
   showCategory?: boolean
   moveTargets?: Bucket[]
   isDragOverlay?: boolean
@@ -29,6 +37,7 @@ export default function TaskCard({
   onRemove,
   onEdit,
   onMove,
+  onPriority,
   showCategory = false,
   moveTargets = [],
   isDragOverlay = false,
@@ -56,11 +65,20 @@ export default function TaskCard({
     setEditing(false)
   }
 
+  const cyclePriority = () => {
+    if (!onPriority) return
+    const next: Priority = task.priority === null ? 1 : task.priority === 1 ? 2 : task.priority === 2 ? 3 : null
+    onPriority(next)
+  }
+
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.35 : 1,
   }
+
+  const p = task.priority
+  const pStyle = p ? PRIORITY_COLORS[p] : null
 
   return (
     <div
@@ -85,7 +103,7 @@ export default function TaskCard({
         aria-label="toggle done"
       />
 
-      {/* text */}
+      {/* text + meta */}
       <div className="task-body">
         {editing ? (
           <input
@@ -113,6 +131,16 @@ export default function TaskCard({
         )}
       </div>
 
+      {/* priority badge */}
+      <button
+        className="priority-btn"
+        onClick={cyclePriority}
+        title={p ? `priority ${p} — click to change` : 'set priority'}
+        style={pStyle ? { background: pStyle.bg, color: pStyle.color } : undefined}
+      >
+        {p ? p : '·'}
+      </button>
+
       {/* actions */}
       <div className="task-actions">
         {moveTargets.map(b => (
@@ -121,7 +149,7 @@ export default function TaskCard({
             className="move-btn"
             onClick={() => onMove?.(b)}
           >
-            → {b === 'daily' ? 'today' : b === 'thisMonth' ? 'this month' : b === 'future' ? 'future' : 'dump'}
+            → {BUCKET_LABELS[b]}
           </button>
         ))}
         <button className="remove-btn" onClick={onRemove} aria-label="remove">×</button>
@@ -223,6 +251,28 @@ export default function TaskCard({
           padding: 1px 7px;
           border-radius: 6px;
           align-self: flex-start;
+        }
+        .priority-btn {
+          flex-shrink: 0;
+          width: 22px;
+          height: 22px;
+          border-radius: 7px;
+          border: 1.5px solid rgba(244,143,177,0.35);
+          background: rgba(255,255,255,0.5);
+          color: #f4a8c4;
+          font-size: 11px;
+          font-weight: 800;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin-top: 1px;
+          transition: all 0.15s;
+          cursor: pointer;
+          line-height: 1;
+        }
+        .priority-btn:hover {
+          border-color: #e91e8c;
+          color: #c2185b;
         }
         .task-actions {
           display: flex;

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { AppState, Task, Bucket, Project, ProjectStep } from '@/types'
+import { AppState, Task, Bucket, Priority, Project, ProjectStep } from '@/types'
 
 const EMOJIS = ['🌸', '🌷', '💐', '🌺', '🩷', '✨', '🎀', '🍓', '🫧', '🌙']
 const randomEmoji = () => EMOJIS[Math.floor(Math.random() * EMOJIS.length)]
@@ -18,26 +18,29 @@ export function usePetal() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const hasLoaded = useRef(false) // guard: never save before first load completes
+  const hasLoaded = useRef(false)
 
-  // Load from API on mount
   useEffect(() => {
     fetch('/api/state')
       .then(r => r.json())
       .then((data: AppState) => {
-        setState({ ...DEFAULT_STATE, ...data, projects: data.projects ?? [] })
-        hasLoaded.current = true // only NOW is it safe to save
+        // Migrate old tasks that don't have priority field
+        const tasks = (data.tasks ?? []).map(t => ({
+          ...t,
+          priority: t.priority ?? null,
+        }))
+        setState({ ...DEFAULT_STATE, ...data, tasks, projects: data.projects ?? [] })
+        hasLoaded.current = true
         setLoading(false)
       })
       .catch(() => {
-        hasLoaded.current = true // even on error, allow saves
+        hasLoaded.current = true
         setLoading(false)
       })
   }, [])
 
-  // Debounced save - will not fire until after initial load completes
   const save = useCallback((newState: AppState) => {
-    if (!hasLoaded.current) return // never overwrite DB with default state
+    if (!hasLoaded.current) return
     if (saveTimer.current) clearTimeout(saveTimer.current)
     setSaving(true)
     saveTimer.current = setTimeout(() => {
@@ -57,8 +60,7 @@ export function usePetal() {
     })
   }, [save])
 
-  // Task mutations
-  const addTask = useCallback((text: string, bucket: Bucket, category?: string | null) => {
+  const addTask = useCallback((text: string, bucket: Bucket, category?: string | null, priority?: Priority) => {
     const task: Task = {
       id: uid(),
       text: text.trim(),
@@ -66,6 +68,7 @@ export function usePetal() {
       emoji: randomEmoji(),
       category: category ?? null,
       bucket,
+      priority: priority ?? null,
       createdAt: Date.now(),
     }
     update(s => ({ ...s, tasks: [...s.tasks, task] }))
@@ -89,6 +92,13 @@ export function usePetal() {
     }))
   }, [update])
 
+  const setPriority = useCallback((id: string, priority: Priority) => {
+    update(s => ({
+      ...s,
+      tasks: s.tasks.map(t => t.id === id ? { ...t, priority } : t),
+    }))
+  }, [update])
+
   const moveTask = useCallback((id: string, bucket: Bucket) => {
     update(s => ({
       ...s,
@@ -105,7 +115,6 @@ export function usePetal() {
     })
   }, [update])
 
-  // Category mutations
   const addCategory = useCallback((name: string) => {
     const clean = name.trim().toLowerCase()
     update(s => {
@@ -122,7 +131,6 @@ export function usePetal() {
     }))
   }, [update])
 
-  // Project mutations
   const addProject = useCallback((name: string, description: string) => {
     const project: Project = {
       id: uid(),
@@ -196,6 +204,7 @@ export function usePetal() {
   }, [update])
 
   const dailyTasks = state.tasks.filter(t => t.bucket === 'daily')
+  const thisWeekTasks = state.tasks.filter(t => t.bucket === 'thisWeek')
   const backlogTasks = state.tasks.filter(t => t.bucket === 'backlog')
   const thisMonthTasks = state.tasks.filter(t => t.bucket === 'thisMonth')
   const futureTasks = state.tasks.filter(t => t.bucket === 'future')
@@ -205,6 +214,7 @@ export function usePetal() {
     loading,
     saving,
     dailyTasks,
+    thisWeekTasks,
     backlogTasks,
     thisMonthTasks,
     futureTasks,
@@ -212,6 +222,7 @@ export function usePetal() {
     removeTask,
     toggleTask,
     editTask,
+    setPriority,
     moveTask,
     reorderTasks,
     addCategory,

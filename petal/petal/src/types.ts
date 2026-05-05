@@ -1,4 +1,5 @@
-export type Bucket = 'daily' | 'thisMonth' | 'future' | 'backlog'
+export type Bucket = 'daily' | 'thisWeek' | 'thisMonth' | 'future' | 'backlog'
+export type Priority = 1 | 2 | 3 | null
 
 export interface Task {
   id: string
@@ -7,6 +8,7 @@ export interface Task {
   emoji: string
   category: string | null
   bucket: Bucket
+  priority: Priority
   createdAt: number
 }
 
