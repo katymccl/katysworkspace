@@ -12,6 +12,17 @@ export interface Task {
   createdAt: number
 }
 
+export interface ArchivedTask {
+  id: string
+  text: string
+  emoji: string
+  category: string | null
+  bucket: Bucket
+  priority: Priority
+  archivedAt: number
+  createdAt: number
+}
+
 export interface ProjectStep {
   id: string
   text: string
@@ -33,4 +44,5 @@ export interface AppState {
   tasks: Task[]
   categories: string[]
   projects: Project[]
+  archive: ArchivedTask[]
 }

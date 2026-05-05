@@ -1,16 +1,19 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { AppState, Task, Bucket, Priority, Project, ProjectStep } from '@/types'
+import { AppState, Task, Bucket, Priority, Project, ProjectStep, ArchivedTask } from '@/types'
 
 const EMOJIS = ['🌸', '🌷', '💐', '🌺', '🩷', '✨', '🎀', '🍓', '🫧', '🌙']
 const randomEmoji = () => EMOJIS[Math.floor(Math.random() * EMOJIS.length)]
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2)
 
+const TEN_DAYS_MS = 10 * 24 * 60 * 60 * 1000
+
 const DEFAULT_STATE: AppState = {
   tasks: [],
   categories: ['personal', 'work', 'errands', 'ideas'],
   projects: [],
+  archive: [],
 }
 
 export function usePetal() {
@@ -24,12 +27,15 @@ export function usePetal() {
     fetch('/api/state')
       .then(r => r.json())
       .then((data: AppState) => {
-        // Migrate old tasks that don't have priority field
+        const now = Date.now()
+        // Migrate old tasks without priority
         const tasks = (data.tasks ?? []).map(t => ({
           ...t,
           priority: t.priority ?? null,
         }))
-        setState({ ...DEFAULT_STATE, ...data, tasks, projects: data.projects ?? [] })
+        // Purge archive entries older than 10 days
+        const archive = (data.archive ?? []).filter(a => now - a.archivedAt < TEN_DAYS_MS)
+        setState({ ...DEFAULT_STATE, ...data, tasks, projects: data.projects ?? [], archive })
         hasLoaded.current = true
         setLoading(false)
       })
@@ -78,11 +84,32 @@ export function usePetal() {
     update(s => ({ ...s, tasks: s.tasks.filter(t => t.id !== id) }))
   }, [update])
 
+  // Toggle done → archives the task instead of marking it done in-place
   const toggleTask = useCallback((id: string) => {
-    update(s => ({
-      ...s,
-      tasks: s.tasks.map(t => t.id === id ? { ...t, done: !t.done } : t),
-    }))
+    update(s => {
+      const task = s.tasks.find(t => t.id === id)
+      if (!task) return s
+      // If already done (shouldn't normally happen via UI), just toggle back
+      if (task.done) {
+        return { ...s, tasks: s.tasks.map(t => t.id === id ? { ...t, done: false } : t) }
+      }
+      // Archive it
+      const archived: ArchivedTask = {
+        id: task.id,
+        text: task.text,
+        emoji: task.emoji,
+        category: task.category,
+        bucket: task.bucket,
+        priority: task.priority,
+        archivedAt: Date.now(),
+        createdAt: task.createdAt,
+      }
+      return {
+        ...s,
+        tasks: s.tasks.filter(t => t.id !== id),
+        archive: [archived, ...s.archive],
+      }
+    })
   }, [update])
 
   const editTask = useCallback((id: string, text: string) => {
@@ -113,6 +140,33 @@ export function usePetal() {
       const rest = s.tasks.filter(t => !orderedIds.includes(t.id))
       return { ...s, tasks: [...reordered, ...rest] }
     })
+  }, [update])
+
+  // Restore from archive back to backlog
+  const restoreTask = useCallback((id: string) => {
+    update(s => {
+      const archived = s.archive.find(a => a.id === id)
+      if (!archived) return s
+      const restored: Task = {
+        id: uid(), // new id to avoid conflicts
+        text: archived.text,
+        emoji: archived.emoji,
+        category: archived.category,
+        bucket: 'backlog',
+        priority: archived.priority,
+        done: false,
+        createdAt: Date.now(),
+      }
+      return {
+        ...s,
+        archive: s.archive.filter(a => a.id !== id),
+        tasks: [...s.tasks, restored],
+      }
+    })
+  }, [update])
+
+  const deleteArchived = useCallback((id: string) => {
+    update(s => ({ ...s, archive: s.archive.filter(a => a.id !== id) }))
   }, [update])
 
   const addCategory = useCallback((name: string) => {
@@ -225,6 +279,8 @@ export function usePetal() {
     setPriority,
     moveTask,
     reorderTasks,
+    restoreTask,
+    deleteArchived,
     addCategory,
     removeCategory,
     addProject,

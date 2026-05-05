@@ -21,6 +21,7 @@ import TaskCard from './TaskCard'
 import DroppableBucket from './DroppableBucket'
 import AddTaskRow from './AddTaskRow'
 import ProjectsTab from './ProjectsTab'
+import ArchiveView from './ArchiveView'
 
 const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
@@ -59,6 +60,7 @@ export default function PetalApp() {
     state, loading, saving,
     dailyTasks, thisWeekTasks, backlogTasks, thisMonthTasks, futureTasks,
     addTask, removeTask, toggleTask, editTask, setPriority, moveTask, reorderTasks,
+    restoreTask, deleteArchived,
     addCategory, removeCategory,
     addProject, removeProject, editProject,
     addStep, removeStep, toggleStep, editStep,
@@ -72,6 +74,7 @@ export default function PetalApp() {
   const [catManagerOpen, setCatManagerOpen] = useState(false)
   const [newCatInput, setNewCatInput] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
+  const [showArchive, setShowArchive] = useState(false)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -499,6 +502,24 @@ export default function PetalApp() {
               )}
             </>
           )}
+
+          {/* ── ARCHIVE LINK + VIEW ── */}
+          {!isSearching && (
+            <div className="archive-footer">
+              {!showArchive ? (
+                <button className="archive-link" onClick={() => setShowArchive(true)}>
+                  🗂 archive {state.archive.length > 0 ? `(${state.archive.length})` : ''}
+                </button>
+              ) : (
+                <ArchiveView
+                  archive={state.archive}
+                  onRestore={restoreTask}
+                  onDelete={deleteArchived}
+                  onClose={() => setShowArchive(false)}
+                />
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -694,6 +715,27 @@ export default function PetalApp() {
           box-shadow: 0 2px 6px rgba(233,30,140,0.22);
         }
         .pri-filter { padding: 4px 9px; }
+
+        /* Archive footer */
+        .archive-footer {
+          margin-top: 32px;
+          padding-top: 16px;
+          border-top: 1.5px dashed rgba(244,143,177,0.25);
+        }
+        .archive-link {
+          background: none;
+          border: none;
+          font-size: 12px;
+          font-weight: 600;
+          color: #f4a8c4;
+          cursor: pointer;
+          letter-spacing: 0.2px;
+          transition: color 0.15s;
+          display: block;
+          margin: 0 auto;
+          text-align: center;
+        }
+        .archive-link:hover { color: #e91e8c; }
       `}</style>
     </DndContext>
   )
