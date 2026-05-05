@@ -503,25 +503,28 @@ export default function PetalApp() {
             </>
           )}
 
-          {/* ── ARCHIVE LINK + VIEW ── */}
-          {!isSearching && (
-            <div className="archive-footer">
-              {!showArchive ? (
-                <button className="archive-link" onClick={() => setShowArchive(true)}>
-                  🗂 archive {state.archive.length > 0 ? `(${state.archive.length})` : ''}
-                </button>
-              ) : (
-                <ArchiveView
-                  archive={state.archive}
-                  onRestore={restoreTask}
-                  onDelete={deleteArchived}
-                  onClose={() => setShowArchive(false)}
-                />
-              )}
+          {/* ── ARCHIVE VIEW (inline, when open) ── */}
+          {showArchive && (
+            <div className="archive-inline">
+              <ArchiveView
+                archive={state.archive ?? []}
+                onRestore={restoreTask}
+                onDelete={deleteArchived}
+                onClose={() => setShowArchive(false)}
+              />
             </div>
           )}
         </div>
       </div>
+
+      {/* fixed archive button — always visible at bottom */}
+      {!showArchive && (
+        <div className="archive-fixed-bar">
+          <button className="archive-fixed-btn" onClick={() => setShowArchive(true)}>
+            🗂 archive{(state.archive ?? []).length > 0 ? ` (${state.archive.length})` : ''}
+          </button>
+        </div>
+      )}
 
       {/* drag overlay */}
       <DragOverlay>
@@ -716,26 +719,46 @@ export default function PetalApp() {
         }
         .pri-filter { padding: 4px 9px; }
 
-        /* Archive footer */
-        .archive-footer {
+        /* Archive inline section */
+        .archive-inline {
           margin-top: 32px;
           padding-top: 16px;
           border-top: 1.5px dashed rgba(244,143,177,0.25);
         }
-        .archive-link {
-          background: none;
-          border: none;
-          font-size: 12px;
-          font-weight: 600;
-          color: #f4a8c4;
-          cursor: pointer;
-          letter-spacing: 0.2px;
-          transition: color 0.15s;
-          display: block;
-          margin: 0 auto;
-          text-align: center;
+
+        /* Fixed archive bar */
+        .archive-fixed-bar {
+          position: fixed;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          display: flex;
+          justify-content: center;
+          padding: 10px 16px 14px;
+          background: linear-gradient(to top, rgba(255,240,248,0.95) 60%, transparent);
+          pointer-events: none;
+          z-index: 50;
         }
-        .archive-link:hover { color: #e91e8c; }
+        .archive-fixed-btn {
+          pointer-events: all;
+          background: rgba(255,255,255,0.85);
+          border: 1.5px solid rgba(244,143,177,0.35);
+          border-radius: 20px;
+          padding: 6px 18px;
+          font-size: 12px;
+          font-weight: 700;
+          color: #c2185b;
+          cursor: pointer;
+          backdrop-filter: blur(8px);
+          box-shadow: 0 2px 12px rgba(233,30,140,0.12);
+          transition: all 0.15s;
+          letter-spacing: 0.2px;
+        }
+        .archive-fixed-btn:hover {
+          background: rgba(255,255,255,1);
+          border-color: #e91e8c;
+          box-shadow: 0 4px 16px rgba(233,30,140,0.2);
+        }
       `}</style>
     </DndContext>
   )
