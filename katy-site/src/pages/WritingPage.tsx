@@ -27,7 +27,7 @@ export default function WritingPage(): JSX.Element {
     );
   }
 
-  const handleCarouselScroll = (direction: number, ref: React.RefObject<HTMLDivElement>) => {
+  const handleCarouselScroll = (direction: number, ref: React.RefObject<HTMLDivElement | null>) => {
     const carousel = ref.current;
     if (!carousel) return;
 
