@@ -121,6 +121,7 @@
 }
 
 .writing-section-card {
+  position: relative;
   padding: 1.5rem;
   border-radius: 1.6rem;
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -131,21 +132,28 @@
   display: flex;
   justify-content: flex-end;
   gap: 0.75rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.writing-section-hint {
+  margin: 0 0 1.25rem;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.92rem;
+  letter-spacing: 0.02em;
 }
 
 .writing-section-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 2.75rem;
+  height: 2.75rem;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
   color: var(--text);
   cursor: pointer;
-  transition: background 160ms ease, transform 160ms ease;
+  transition: background 160ms ease, transform 160ms ease, border-color 160ms ease;
 }
 
 .writing-section-button:hover,
@@ -183,38 +191,162 @@
   line-height: 1.7;
 }
 
-.writing-section-scroll {
+.writing-section-carousel {
+  position: relative;
   display: flex;
   gap: 1rem;
   overflow-x: auto;
-  padding-bottom: 0.5rem;
+  padding: 0.5rem 1rem 0.5rem 1rem;
+  margin: 0 -1rem;
   scroll-snap-type: x mandatory;
   -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+  overflow-y: hidden;
+  scroll-padding: 0 1rem;
+  touch-action: pan-x;
+  cursor: grab;
 }
 
-.writing-section-scroll::-webkit-scrollbar {
+.writing-section-carousel:active {
+  cursor: grabbing;
+}
+
+.writing-section-carousel:focus-visible {
+  outline: 2px solid rgba(168, 85, 247, 0.8);
+  outline-offset: 4px;
+}
+
+.writing-section-carousel::before,
+.writing-section-carousel::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  height: 100%;
+  width: 5rem;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.writing-section-carousel::before {
+  left: 0;
+  background: linear-gradient(to right, rgba(11, 8, 20, 0.95), transparent 65%);
+  opacity: 0;
+}
+
+.writing-section-carousel::after {
+  right: 0;
+  background: linear-gradient(to left, rgba(11, 8, 20, 0.95), transparent 65%);
+  opacity: 0;
+}
+
+.writing-section-carousel::-webkit-scrollbar {
   height: 6px;
 }
 
-.writing-section-scroll::-webkit-scrollbar-thumb {
+.writing-section-carousel::-webkit-scrollbar-thumb {
   background: rgba(168, 85, 247, 0.4);
   border-radius: 999px;
 }
 
-.writing-item-card {
-  min-width: 280px;
-  flex-shrink: 0;
-  padding: 1.25rem;
+.writing-carousel-card {
+  flex: 0 0 min(320px, 80vw);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 1.35rem;
   border-radius: 1.4rem;
   background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
   scroll-snap-align: start;
-  transition: transform 160ms ease, border-color 160ms ease;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  transition: transform 200ms ease, border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
 }
 
-.writing-item-card:hover {
-  transform: translateY(-2px);
-  border-color: rgba(168, 85, 247, 0.4);
+.writing-carousel-card:hover,
+.writing-carousel-card:focus-visible {
+  transform: translateY(-3px);
+  border-color: rgba(168, 85, 247, 0.5);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.24);
+}
+
+.writing-overlay-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: rgba(4, 3, 10, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.writing-overlay-panel {
+  position: relative;
+  max-width: min(720px, 100%);
+  width: 100%;
+  max-height: calc(100vh - 3rem);
+  overflow-y: auto;
+  padding: 2rem;
+  border-radius: 1.8rem;
+  background: rgba(11, 8, 20, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 40px 120px rgba(0, 0, 0, 0.45);
+}
+
+.writing-overlay-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.writing-overlay-close:hover,
+.writing-overlay-close:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.writing-overlay-section {
+  margin: 0 0 0.75rem;
+  color: var(--accent);
+  font-size: 0.8rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.writing-overlay-title {
+  margin: 0;
+  font-size: clamp(2rem, 4vw, 2.8rem);
+  line-height: 1.05;
+}
+
+.writing-overlay-tag {
+  display: inline-flex;
+  margin-top: 1rem;
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-soft);
+  font-size: 0.85rem;
+}
+
+.writing-overlay-body {
+  margin-top: 1.5rem;
+  color: var(--text-soft);
+  line-height: 1.9;
+  font-size: 1rem;
 }
 
 .writing-item-tag {
@@ -260,6 +392,28 @@
 
   .writing-featured-title {
     font-size: 2rem;
+  }
+}
+
+@media (max-width: 800px) {
+  .writing-section-scroll {
+    --card-min-width: 240px;
+  }
+
+  .writing-section-scroll::before,
+  .writing-section-scroll::after {
+    flex: 0 0 calc((100% - var(--card-min-width)) / 2);
+  }
+}
+
+@media (max-width: 560px) {
+  .writing-section-scroll {
+    --card-min-width: 220px;
+  }
+
+  .writing-section-scroll::before,
+  .writing-section-scroll::after {
+    flex: 0 0 calc((100% - var(--card-min-width)) / 2);
   }
 }
 

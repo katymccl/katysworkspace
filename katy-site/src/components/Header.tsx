@@ -4,8 +4,11 @@
 import type { JSX } from "react";
 import LinkedInIcon from "./icons/LinkedInIcon";
 import MountainMark from "./icons/MountainMark";
+import Instagram from "./icons/Instagram";
+import instagramUrl from "./icons/instagram.svg";
 
 const LINKEDIN_URL = "https://www.linkedin.com/in/kathrynmcclintic/";
+const INSTAGRAM_URL = "https://www.instagram.com/freeskikaty";
 
 export default function Header(): JSX.Element {
   return (
@@ -25,9 +28,13 @@ export default function Header(): JSX.Element {
         <a href="#portfolios" className="nav-link">
           Portfolios
         </a>
-        <a href={LINKEDIN_URL} target="_blank" rel="noreferrer" className="button button-linkedin">
+        <a href={LINKEDIN_URL} target="_blank" rel="noreferrer" className="button" style={{ color: '#fff' }}>
           <LinkedInIcon />
           LinkedIn
+        </a>
+        <a href={INSTAGRAM_URL} target="_blank" rel="noreferrer" className="button button-instagram">
+          <Instagram src={instagramUrl} />
+          Instagram
         </a>
       </nav>
     </header>

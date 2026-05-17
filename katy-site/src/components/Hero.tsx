@@ -2,8 +2,11 @@
 // components/Hero.tsx
 // =========================
 import type { JSX } from "react";
+import Instagram from "./icons/Instagram";
+import instagramUrl from "./icons/instagram.svg";
 
 const LINKEDIN_URL = "https://www.linkedin.com/in/kathrynmcclintic/";
+const INSTAGRAM_URL = "https://www.instagram.com/freeskikaty";
 const EMAIL = "kathrynrmcclintic@gmail.com";
 
 const PROFILE_IMG = "/profile.jpg";
@@ -38,6 +41,11 @@ export default function Hero(): JSX.Element {
                     <a href={`mailto:${EMAIL}`} className="button button-secondary">
                         Email Me
                     </a>
+                    <a href={INSTAGRAM_URL} target="_blank" rel="noreferrer" className="button button-secondary">
+                    <Instagram src={instagramUrl} />
+                    Instagram
+                    </a>
+                
                 </div>
 
                 <div className="tag-row" aria-label="Experience tags">

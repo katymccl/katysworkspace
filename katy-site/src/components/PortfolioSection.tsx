@@ -23,7 +23,7 @@ const cards = [
     title: "Coding Portfolio",
     description: "Software projects, technical case studies, product work, and engineering depth.",
     eyebrow: "Technical",
-    href: "/coding",
+    href: "https://github.com/katymccl?tab=repositories",
     icon: Code2,
   },
   {
