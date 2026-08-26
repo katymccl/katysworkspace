@@ -1,0 +1,100 @@
+/* ── Playground page shell ── */
+.playground-page-shell {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 20% 10%, rgba(168, 85, 247, 0.2), transparent 40%),
+    radial-gradient(circle at 80% 0%, rgba(139, 92, 246, 0.18), transparent 45%),
+    linear-gradient(180deg, #06040a 0%, #0b0613 40%, #0e0818 100%);
+}
+
+.playground-page-frame {
+  width: min(calc(100% - 2rem), 1200px);
+  margin: 0 auto;
+  padding: 2.5rem 0 6rem;
+}
+
+/* ── Toolbar ── */
+.playground-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+  margin-bottom: 1.25rem;
+}
+
+.playground-run-btn {
+  min-height: 2.6rem;
+  padding: 0.6rem 1.1rem;
+}
+
+.playground-hint {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+/* ── Editor ── */
+.playground-editor-wrap {
+  position: relative;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin-bottom: 1.5rem;
+}
+
+.playground-editor-host {
+  height: 420px;
+  width: 100%;
+}
+
+.playground-editor-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 1.5rem;
+  color: var(--text-soft);
+  font-size: 0.95rem;
+  background: rgba(9, 7, 13, 0.6);
+}
+
+/* ── Output panel ── */
+.playground-output-wrap {
+  border-radius: var(--radius-lg);
+  padding: 1.25rem 1.4rem 1.5rem;
+}
+
+.playground-output-label {
+  margin: 0 0 0.6rem;
+  font-size: 0.76rem;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.playground-output {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.92rem;
+  line-height: 1.6;
+  color: var(--text-soft);
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.playground-output-success {
+  color: #b8f7c8;
+}
+
+.playground-output-error {
+  color: #ffb4b4;
+}
+
+@media (max-width: 720px) {
+  .playground-editor-host {
+    height: 320px;
+  }
+}
