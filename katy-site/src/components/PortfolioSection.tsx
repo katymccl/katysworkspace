@@ -2,7 +2,7 @@
 // components/PortfolioSection.tsx
 // =========================
 import type { JSX } from "react";
-import { Brush, ChevronRight, Code2, Mountain, PenSquare } from "lucide-react";
+import { Brush, ChevronRight, Code2, Mountain, PenSquare, TerminalSquare } from "lucide-react";
 
 const cards = [
   {
@@ -32,6 +32,13 @@ const cards = [
     eyebrow: "Editorial",
     href: "/writing",
     icon: PenSquare,
+  },
+  {
+    title: "Playground",
+    description: "A small in-browser C# editor — write a snippet and compile and run it live.",
+    eyebrow: "Interactive",
+    href: "/playground",
+    icon: TerminalSquare,
   },
 ];
 

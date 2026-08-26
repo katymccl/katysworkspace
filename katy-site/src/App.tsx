@@ -11,6 +11,7 @@ import PortfolioSection from "./components/PortfolioSection";
 import ArtPage from "./pages/ArtPage";
 import WritingPage from "./pages/WritingPage";
 import SubCollectionDetailPage from "./pages/SubCollectionDetailPage";
+import PlaygroundPage from "./pages/PlaygroundPage";
 
 function Home(): JSX.Element {
   return (
@@ -34,6 +35,7 @@ export default function App(): JSX.Element {
       <Route path="/art" element={<ArtPage />} />
       <Route path="/writing" element={<WritingPage />} />
       <Route path="/art/:collectionId/:subCollectionId" element={<SubCollectionDetailPage />} />
+      <Route path="/playground" element={<PlaygroundPage />} />
     </Routes>
   );
 }
