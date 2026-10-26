@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { ChevronDown, ChevronRight, Database, FileSpreadsheet, Layers, Plus } from 'lucide-react'
+import { ChevronDown, ChevronRight, Database, FileSpreadsheet, Layers, Plus, X } from 'lucide-react'
 import type { Dataset, View } from '../lib/datasets'
 import { Wordmark } from './Wordmark'
 
@@ -9,18 +9,39 @@ interface SidebarProps {
   datasetsOpen: boolean
   onToggleDatasets: () => void
   onSelect: (view: View) => void
+  /** When set (the phone menu), shows a close button. */
+  onClose?: () => void
 }
 
-export function Sidebar({ datasets, view, datasetsOpen, onToggleDatasets, onSelect }: SidebarProps) {
+export function Sidebar({
+  datasets,
+  view,
+  datasetsOpen,
+  onToggleDatasets,
+  onSelect,
+  onClose,
+}: SidebarProps) {
   return (
-    <aside className="flex w-64 shrink-0 flex-col border-r border-slate-200 bg-white">
-      <button
-        onClick={() => onSelect({ kind: 'home' })}
-        aria-label="sema home"
-        className="px-5 py-5 text-left"
-      >
-        <Wordmark className="text-2xl" />
-      </button>
+    <aside className="flex h-full w-64 shrink-0 flex-col border-r border-slate-200 bg-white">
+      <div className="flex items-center justify-between pr-3">
+        <button
+          onClick={() => onSelect({ kind: 'home' })}
+          aria-label="sema home"
+          className="px-5 py-5 text-left"
+        >
+          <Wordmark className="text-2xl" />
+        </button>
+        {onClose && (
+          <button
+            onClick={onClose}
+            aria-label="Close menu"
+            autoFocus
+            className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        )}
+      </div>
 
       <nav className="flex-1 overflow-y-auto px-3 pb-4">
         <button

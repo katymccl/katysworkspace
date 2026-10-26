@@ -190,6 +190,24 @@ describe('profileDataset: distinct values and uniqueness', () => {
     expect(v.distinctCount).toBe(3)
   })
 
+  it('flags ID headers and unique, complete string columns as potential identifiers', () => {
+    const input = csv(
+      ['id', 'code', 'price', 'when', 'flag', 'gappy', 'repeat'],
+      ['1', 'A-1', '9.99', '2024-01-01', 'yes', 'x', 'a'],
+      ['2', 'A-2', '4.50', '2024-01-02', 'no', '', 'a'],
+      ['3', 'A-3', '1.25', '2024-01-03', 'true', 'y', 'b'],
+    )
+    const flagged = profileDataset(input)
+      .columns.filter((c) => c.isPotentialIdentifier)
+      .map((c) => c.name)
+    // price/when/flag are unique but excluded by type; gappy has a missing value.
+    expect(flagged).toEqual(['id', 'code'])
+  })
+
+  it('does not flag unique values in a single-row dataset', () => {
+    expect(column(csv(['n'], ['1']), 'n').isPotentialIdentifier).toBe(false)
+  })
+
   it('is zero for an all-missing column', () => {
     const v = column(csv(['v'], [''], ['NA']), 'v')
     expect(v).toMatchObject({ distinctCount: 0, uniquenessRatio: 0, isUnique: false })

@@ -9,6 +9,7 @@ import type {
   ValueCount,
   ValueKind,
 } from './types'
+import { columnIdentifierReasons, looksLikeIdValue, withCrossColumnReasons } from './identifiers'
 import {
   classifyValue,
   DEFAULT_MISSING_TOKENS,
@@ -44,7 +45,11 @@ export function profileDataset(input: ProfileInput, options: ProfileOptions = {}
     rowCount: rows.length,
     columnCount: columns.length,
     malformedRowCount: rows.filter((row) => isMalformed(row, columns)).length,
-    columns: columns.map((name, index) => profileColumn(name, index, rows, settings)),
+    columns: withCrossColumnReasons(
+      columns.map((name, index) => profileColumn(name, index, rows, settings)),
+      rows,
+      settings.missingTokens,
+    ),
   }
 }
 
@@ -102,6 +107,19 @@ function profileColumn(
   const nonMissingCount = rows.length - missingCount
   const distinctCount = valueCounts.size
   const inferredType = inferType(kindCounts)
+  const isUnique = nonMissingCount > 0 && distinctCount === nonMissingCount
+  const identifierReasons = columnIdentifierReasons({
+    name,
+    inferredType,
+    missingCount,
+    nonMissingCount,
+    isUnique,
+    distinctCount,
+    uniquenessRatio: ratio(distinctCount, nonMissingCount),
+    repeatedValueCount: countRepeated(valueCounts),
+    // Checked per distinct value, and only where the code-like-values reason can apply.
+    allValuesIdLike: inferredType === 'string' && [...valueCounts.keys()].every(looksLikeIdValue),
+  })
 
   return {
     name,
@@ -114,7 +132,9 @@ function profileColumn(
     nonMissingCount,
     distinctCount,
     uniquenessRatio: ratio(distinctCount, nonMissingCount),
-    isUnique: nonMissingCount > 0 && distinctCount === nonMissingCount,
+    isUnique,
+    isPotentialIdentifier: identifierReasons.length > 0,
+    identifierReasons,
     sampleValues,
     numericStats:
       inferredType === 'integer' || inferredType === 'decimal' ? numericStats(numbers) : null,
@@ -158,14 +178,26 @@ export function numericStats(values: readonly number[]): NumericStats | null {
   }
 }
 
-function topValues(counts: ReadonlyMap<string, number>, total: number, limit: number): ValueCount[] {
-  return [...counts]
-    // Ties are broken by code-unit order rather than localeCompare, which varies by locale.
-    .sort(([a, ca], [b, cb]) => cb - ca || (a < b ? -1 : a > b ? 1 : 0))
-    .slice(0, limit)
-    .map(([value, count]) => ({ value, count, ratio: ratio(count, total) }))
+function topValues(
+  counts: ReadonlyMap<string, number>,
+  total: number,
+  limit: number,
+): ValueCount[] {
+  return (
+    [...counts]
+      // Ties are broken by code-unit order rather than localeCompare, which varies by locale.
+      .sort(([a, ca], [b, cb]) => cb - ca || (a < b ? -1 : a > b ? 1 : 0))
+      .slice(0, limit)
+      .map(([value, count]) => ({ value, count, ratio: ratio(count, total) }))
+  )
 }
 
 function ratio(part: number, whole: number): number {
   return whole === 0 ? 0 : part / whole
+}
+
+function countRepeated(counts: ReadonlyMap<string, number>): number {
+  let repeated = 0
+  for (const count of counts.values()) if (count > 1) repeated++
+  return repeated
 }

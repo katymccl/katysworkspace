@@ -9,7 +9,10 @@ export function missingTokenSet(tokens: readonly string[] = DEFAULT_MISSING_TOKE
 
 const DEFAULT_TOKEN_SET = missingTokenSet()
 
-export function isMissing(value: RawValue, tokens: ReadonlySet<string> = DEFAULT_TOKEN_SET): boolean {
+export function isMissing(
+  value: RawValue,
+  tokens: ReadonlySet<string> = DEFAULT_TOKEN_SET,
+): boolean {
   if (value === null || value === undefined) return true
   return tokens.has(toText(value).trim().toLowerCase())
 }

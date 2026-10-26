@@ -56,6 +56,29 @@ export interface ValueCount {
   ratio: number
 }
 
+/**
+ * Evidence that a column identifies or names records. Empty columns never get any.
+ * - id-header: a header word is `id`, `ids`, `identifier`, `uuid` or `guid` (`Library ID`, `shop_id`)
+ * - name-header: a header word is `name` or ends in it (`Name`, `first_name`, `username`)
+ * - entity-name: the header is the thing an ID column identifies (`Library` beside `Library ID`)
+ * - id-like-values: a string column whose every value is a code such as `L-IHL` or `SKU123`
+ * - unique-values: every value present and different, in a `string` column of at least two rows or
+ *   an `integer` column of at least 20 (smaller unique number columns are usually coincidences).
+ *   Decimals, booleans and dates are left out since they are often unique by chance.
+ * - mostly-unique: an `integer` or `string` column of at least 20 values where at least 90% are
+ *   distinct but some repeat, like an ID column with a few duplicates
+ * - paired-values: values repeat in step with another column's, in both directions for at least 90%
+ *   of rows (`Library ID` and `Library`), checked on the first 10,000 rows
+ */
+export type IdentifierReason =
+  | { kind: 'id-header' }
+  | { kind: 'name-header' }
+  | { kind: 'entity-name'; idColumn: string }
+  | { kind: 'id-like-values' }
+  | { kind: 'unique-values' }
+  | { kind: 'mostly-unique'; repeatedValueCount: number }
+  | { kind: 'paired-values'; withColumn: string }
+
 export interface ColumnProfile {
   name: string
   /** Position of the column in the file, starting at 0. */
@@ -75,6 +98,10 @@ export interface ColumnProfile {
   uniquenessRatio: number
   /** True when every non-missing value is different and there is at least one: a candidate key. */
   isUnique: boolean
+  /** True when there is at least one identifier reason. */
+  isPotentialIdentifier: boolean
+  /** Why the column looks like an identifier (an ID, a code or a name), in a fixed order. */
+  identifierReasons: IdentifierReason[]
   /** The first distinct non-missing raw values in row order, unmodified. */
   sampleValues: string[]
   /** Set for `integer` and `decimal` columns, otherwise null. */
