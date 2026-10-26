@@ -1,5 +1,14 @@
 import type { ReactNode } from 'react'
-import { ChevronDown, ChevronRight, Database, FileSpreadsheet, Layers, Plus, X } from 'lucide-react'
+import {
+  ChevronDown,
+  ChevronRight,
+  Database,
+  FileSpreadsheet,
+  Layers,
+  Plus,
+  Sparkles,
+  X,
+} from 'lucide-react'
 import type { Dataset, View } from '../lib/datasets'
 import { Wordmark } from './Wordmark'
 
@@ -11,6 +20,8 @@ interface SidebarProps {
   onSelect: (view: View) => void
   /** When set (the phone menu), shows a close button. */
   onClose?: () => void
+  /** Display name for a dataset; defaults to its file name. */
+  nameOf?: (dataset: Dataset) => string
 }
 
 export function Sidebar({
@@ -20,6 +31,7 @@ export function Sidebar({
   onToggleDatasets,
   onSelect,
   onClose,
+  nameOf = (d) => d.fileName,
 }: SidebarProps) {
   return (
     <aside className="flex h-full w-64 shrink-0 flex-col border-r border-slate-200 bg-white">
@@ -77,8 +89,14 @@ export function Sidebar({
             {datasets.map((d) => (
               <li key={d.id}>
                 <NavItem
-                  icon={<FileSpreadsheet className="h-4 w-4" />}
-                  label={d.fileName}
+                  icon={
+                    d.generatedBy ? (
+                      <Sparkles className="h-4 w-4" aria-label="AI-generated sample" />
+                    ) : (
+                      <FileSpreadsheet className="h-4 w-4" />
+                    )
+                  }
+                  label={nameOf(d)}
                   active={view.kind === 'dataset' && view.id === d.id}
                   onClick={() => onSelect({ kind: 'dataset', id: d.id })}
                 />

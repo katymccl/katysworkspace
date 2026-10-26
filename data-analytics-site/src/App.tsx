@@ -1,15 +1,51 @@
-import { useEffect, useRef, useState } from 'react'
-import { Layers, Menu } from 'lucide-react'
+import { Suspense, lazy, useEffect, useRef, useState } from 'react'
+import { Menu } from 'lucide-react'
 import { CsvPreview } from './components/CsvPreview'
 import { CsvUploader } from './components/CsvUploader'
+import { SampleGenerator } from './components/generate/SampleGenerator'
 import { Home } from './components/Home'
 import { Notices, type Notice } from './components/Notices'
 import { Sidebar } from './components/Sidebar'
+import { ColumnDefinition } from './components/understanding/ColumnDefinition'
+import { UnderstandingPanel } from './components/understanding/UnderstandingPanel'
 import { Wordmark } from './components/Wordmark'
+import { useUnderstanding } from './hooks/useUnderstanding'
 import { toDataset, type Dataset, type View } from './lib/datasets'
+import { matchDataset, recordUpload, type MatchReason } from './lib/identity'
+import type { BaseSource } from './lib/generate/base'
 import type { CsvData } from './lib/parseCsv'
+import {
+  EMPTY_CONFIRMED,
+  acceptAllSuggestions,
+  confirmColumn,
+  confirmDatasetField,
+  loadRegistry,
+  revertColumn,
+  revertDatasetField,
+  saveRegistry,
+  type ConfirmedDefinitions,
+  type ResolvedUnderstanding,
+} from './lib/understanding'
+
+// The diagram library is large, so the relationships page loads only when it's opened.
+const RelationshipsPage = lazy(() =>
+  import('./components/relationships/RelationshipsPage').then((m) => ({
+    default: m.RelationshipsPage,
+  })),
+)
+
+const MATCH_NOTE: Record<MatchReason, string> = {
+  'new-dataset': '',
+  'same-content': ', recognised from an earlier upload',
+  'new-version': ', as a new version of a dataset you uploaded before',
+}
+
+function notice(kind: Notice['kind'], message: string): Notice {
+  return { id: crypto.randomUUID(), kind, message }
+}
 
 function App() {
+  const understanding = useUnderstanding()
   const [datasets, setDatasets] = useState<Dataset[]>([])
   const [view, setView] = useState<View>({ kind: 'home' })
   const [datasetsOpen, setDatasetsOpen] = useState(true)
@@ -36,20 +72,50 @@ function App() {
   }, [menuOpen])
 
   function handleUpload(loaded: CsvData[], errors: string[]) {
-    const added = loaded.map(toDataset)
+    let registry = loadRegistry()
+    const now = new Date().toISOString()
+    const added: Dataset[] = []
+    const messages: Notice[] = []
+    let firstShown: string | undefined
+
+    for (const data of loaded) {
+      const identity = matchDataset(registry, data, () => crypto.randomUUID())
+      registry = recordUpload(registry, identity, data.fileName, now)
+
+      // The exact same version is already open: show it instead of opening a second copy.
+      const open = [...datasets, ...added].find(
+        (d) =>
+          d.datasetId === identity.datasetId &&
+          d.fingerprints.content === data.fingerprints.content,
+      )
+      if (open) {
+        firstShown ??= open.id
+        messages.push(notice('success', `${data.fileName} is already open`))
+        continue
+      }
+
+      const dataset = toDataset(data, identity)
+      added.push(dataset)
+      firstShown ??= dataset.id
+      messages.push(
+        notice(
+          'success',
+          data.generatedBy
+            ? `${data.fileName} generated as a fictional sample`
+            : `${data.fileName} loaded successfully${MATCH_NOTE[identity.matchedBy]}`,
+        ),
+      )
+    }
+    saveRegistry(registry)
+    understanding.restore(added)
+
     // Each upload replaces the previous upload's messages.
-    setNotices([
-      ...added.map((d): Notice => ({
-        id: crypto.randomUUID(),
-        kind: 'success',
-        message: `${d.fileName} loaded successfully`,
-      })),
-      ...errors.map((message): Notice => ({ id: crypto.randomUUID(), kind: 'error', message })),
-    ])
-    if (added.length === 0) return
-    setDatasets((prev) => [...prev, ...added])
-    setDatasetsOpen(true)
-    setView({ kind: 'dataset', id: added[0].id })
+    setNotices([...messages, ...errors.map((message) => notice('error', message))])
+    if (added.length > 0) {
+      setDatasets((prev) => [...prev, ...added])
+      setDatasetsOpen(true)
+    }
+    if (firstShown) setView({ kind: 'dataset', id: firstShown })
   }
 
   function handleRemove(id: string) {
@@ -75,6 +141,7 @@ function App() {
     view,
     datasetsOpen,
     onToggleDatasets: () => setDatasetsOpen((open) => !open),
+    nameOf: (d: Dataset) => understanding.resolve(d).name.value ?? d.fileName,
   }
 
   return (
@@ -133,6 +200,26 @@ function App() {
                   subtitle="Add one or more CSV files. Each file becomes its own dataset."
                 />
                 <CsvUploader onUpload={handleUpload} />
+                <div className="mt-6">
+                  <SampleGenerator
+                    key={view.baseId ?? 'none'}
+                    bases={datasets.map((d) => ({
+                      id: d.id,
+                      name: understanding.resolve(d).name.value ?? d.fileName,
+                    }))}
+                    getBase={(id) => {
+                      const d = datasets.find((x) => x.id === id)
+                      return d
+                        ? {
+                            source: baseSource(d, understanding.resolve(d)),
+                            datasetId: d.datasetId,
+                          }
+                        : null
+                    }}
+                    initialBaseId={view.baseId}
+                    onGenerated={(data) => handleUpload([data], [])}
+                  />
+                </div>
               </>
             )}
 
@@ -142,14 +229,22 @@ function App() {
                   title="All datasets"
                   subtitle={`${datasets.length} dataset${datasets.length === 1 ? '' : 's'} loaded`}
                 />
-                <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-slate-300 bg-white px-6 py-14 text-center text-slate-500">
-                  <Layers className="h-10 w-10 text-slate-400" />
-                  <p>Working across all datasets is coming soon.</p>
-                </div>
+                <Suspense
+                  fallback={<p className="text-sm text-slate-500">Loading relationships…</p>}
+                >
+                  <RelationshipsPage datasets={datasets} resolve={understanding.resolve} />
+                </Suspense>
               </>
             )}
 
-            {selected && <CsvPreview data={selected} onRemove={() => handleRemove(selected.id)} />}
+            {selected && (
+              <DatasetPage
+                dataset={selected}
+                understanding={understanding}
+                onRemove={() => handleRemove(selected.id)}
+                onGenerateRelated={() => setView({ kind: 'upload', baseId: selected.id })}
+              />
+            )}
           </div>
         </main>
       </div>
@@ -164,6 +259,69 @@ function PageHeader({ title, subtitle }: { title: string; subtitle: string }) {
       <p className="mt-1 text-slate-500">{subtitle}</p>
     </header>
   )
+}
+
+/** One dataset: its profile, plus the AI-suggested or confirmed understanding of it. */
+function DatasetPage({
+  dataset,
+  understanding,
+  onRemove,
+  onGenerateRelated,
+}: {
+  dataset: Dataset
+  understanding: ReturnType<typeof useUnderstanding>
+  onRemove: () => void
+  onGenerateRelated: () => void
+}) {
+  const resolved = understanding.resolve(dataset)
+  const update = (change: (c: ConfirmedDefinitions) => ConfirmedDefinitions) =>
+    understanding.updateConfirmed(dataset.datasetId, change)
+
+  return (
+    <CsvPreview
+      data={dataset}
+      title={resolved.name.value ?? dataset.fileName}
+      onRemove={onRemove}
+      onGenerateRelated={onGenerateRelated}
+      about={
+        <UnderstandingPanel
+          resolved={resolved}
+          state={understanding.stateFor(dataset)}
+          onInterpret={() => understanding.interpret(dataset)}
+          onSaveField={(field, value) => update((c) => confirmDatasetField(c, field, value))}
+          onRevertField={(field) => update((c) => revertDatasetField(c, field))}
+          onAcceptAll={() => update((c) => acceptAllSuggestions(c, resolved))}
+          onResetAll={() => update(() => EMPTY_CONFIRMED)}
+        />
+      }
+      renderDefinition={(column) => (
+        <ColumnDefinition
+          column={resolved.columns[column.index]}
+          onSave={(change) => update((c) => confirmColumn(c, column.name, change))}
+          onRevert={() => update((c) => revertColumn(c, column.name))}
+        />
+      )}
+    />
+  )
+}
+
+/** A dataset as the base for generating a related one: its data plus what it means. */
+function baseSource(d: Dataset, resolved: ResolvedUnderstanding): BaseSource {
+  return {
+    name: resolved.name.value ?? d.fileName,
+    fileName: d.fileName,
+    description: resolved.description.value,
+    rowMeaning: resolved.rowMeaning.value,
+    columns: d.columns,
+    rows: d.rows,
+    profile: d.profile,
+    columnDefinitions: new Map(
+      resolved.columns.map((c) => [
+        c.name,
+        { description: c.description.value, role: c.role.value },
+      ]),
+    ),
+  }
 }
 
 export default App

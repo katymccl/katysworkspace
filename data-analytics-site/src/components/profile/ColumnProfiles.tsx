@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { ColumnProfile, NumericStats } from '../../lib/profiling'
 import { formatNumber, formatPercent, plural } from './format'
 import { IdentifierStar } from './IdentifierStar'
@@ -7,7 +8,13 @@ import { TYPE_META } from './typeMeta'
 
 const TOP_VALUES_SHOWN = 3
 
-export function ColumnProfiles({ columns }: { columns: ColumnProfile[] }) {
+interface ColumnProfilesProps {
+  columns: ColumnProfile[]
+  /** Optional extra content for each card, such as the column's confirmed or suggested meaning. */
+  renderDefinition?: (column: ColumnProfile) => ReactNode
+}
+
+export function ColumnProfiles({ columns, renderDefinition }: ColumnProfilesProps) {
   if (columns.length === 0) return null
 
   return (
@@ -22,14 +29,14 @@ export function ColumnProfiles({ columns }: { columns: ColumnProfile[] }) {
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {columns.map((column) => (
-          <ColumnCard key={column.index} column={column} />
+          <ColumnCard key={column.index} column={column} definition={renderDefinition?.(column)} />
         ))}
       </div>
     </section>
   )
 }
 
-function ColumnCard({ column }: { column: ColumnProfile }) {
+function ColumnCard({ column, definition }: { column: ColumnProfile; definition?: ReactNode }) {
   return (
     <article className="flex min-w-0 flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4">
       <header className="flex items-start justify-between gap-2">
@@ -65,6 +72,7 @@ function ColumnCard({ column }: { column: ColumnProfile }) {
       </dl>
 
       <ColumnDetail column={column} />
+      {definition}
     </article>
   )
 }
