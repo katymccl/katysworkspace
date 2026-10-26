@@ -1,5 +1,23 @@
 @import 'tailwindcss';
 
+@theme {
+  /* Sema brand: the wordmark's ink and rounded geometric type. */
+  --color-ink: #2b2541;
+  --font-display: 'Outfit', ui-sans-serif, system-ui, sans-serif;
+
+  /* Violet retuned to the logo's purples (500 = wordmark dot, 600 = mark, 900 = shadow). */
+  --color-violet-50: #f5f2fd;
+  --color-violet-100: #ebe5fb;
+  --color-violet-200: #d8ccf6;
+  --color-violet-300: #c6aeef;
+  --color-violet-400: #b195f0;
+  --color-violet-500: #9c7feb;
+  --color-violet-600: #7960bd;
+  --color-violet-700: #63509f;
+  --color-violet-800: #4d4183;
+  --color-violet-900: #403874;
+}
+
 body {
   @apply bg-slate-50 text-slate-900 antialiased;
 }

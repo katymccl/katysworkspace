@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Layers } from 'lucide-react'
 import { CsvPreview } from './components/CsvPreview'
 import { CsvUploader } from './components/CsvUploader'
+import { Home } from './components/Home'
 import { Notices, type Notice } from './components/Notices'
 import { Sidebar } from './components/Sidebar'
 import { toDataset, type Dataset, type View } from './lib/datasets'
@@ -9,7 +10,7 @@ import type { CsvData } from './lib/parseCsv'
 
 function App() {
   const [datasets, setDatasets] = useState<Dataset[]>([])
-  const [view, setView] = useState<View>({ kind: 'upload' })
+  const [view, setView] = useState<View>({ kind: 'home' })
   const [datasetsOpen, setDatasetsOpen] = useState(true)
 
   const [notices, setNotices] = useState<Notice[]>([])
@@ -38,6 +39,16 @@ function App() {
   }
 
   const selected = view.kind === 'dataset' ? datasets.find((d) => d.id === view.id) : undefined
+
+  if (view.kind === 'home') {
+    return (
+      <Home
+        datasetCount={datasets.length}
+        onUpload={() => setView({ kind: 'upload' })}
+        onViewDatasets={() => setView({ kind: 'dataset', id: datasets[0].id })}
+      />
+    )
+  }
 
   return (
     <div className="flex h-screen">

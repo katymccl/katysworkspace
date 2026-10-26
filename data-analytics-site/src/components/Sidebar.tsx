@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { ChevronDown, ChevronRight, Database, FileSpreadsheet, Layers, Plus } from 'lucide-react'
 import type { Dataset, View } from '../lib/datasets'
+import { Wordmark } from './Wordmark'
 
 interface SidebarProps {
   datasets: Dataset[]
@@ -13,9 +14,13 @@ interface SidebarProps {
 export function Sidebar({ datasets, view, datasetsOpen, onToggleDatasets, onSelect }: SidebarProps) {
   return (
     <aside className="flex w-64 shrink-0 flex-col border-r border-slate-200 bg-white">
-      <div className="px-5 py-5">
-        <h1 className="text-lg font-semibold">Data Analytics</h1>
-      </div>
+      <button
+        onClick={() => onSelect({ kind: 'home' })}
+        aria-label="sema home"
+        className="px-5 py-5 text-left"
+      >
+        <Wordmark className="text-2xl" />
+      </button>
 
       <nav className="flex-1 overflow-y-auto px-3 pb-4">
         <button
@@ -89,7 +94,7 @@ function NavItem({ icon, label, active, disabled, onClick }: NavItemProps) {
       title={label}
       className={`flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-40 ${
         active
-          ? 'bg-indigo-50 font-medium text-indigo-700'
+          ? 'bg-violet-50 font-medium text-violet-700'
           : 'text-slate-600 enabled:hover:bg-slate-100'
       }`}
     >

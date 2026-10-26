@@ -65,16 +65,16 @@ export function CsvUploader({ onUpload }: CsvUploaderProps) {
         }}
         onDragLeave={() => setIsDragging(false)}
         onDrop={handleDrop}
-        className={`flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-14 text-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+        className={`flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-14 text-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${
           isDragging
-            ? 'border-indigo-500 bg-indigo-50'
-            : 'border-slate-300 bg-white hover:border-indigo-400 hover:bg-slate-50'
+            ? 'border-violet-500 bg-violet-50'
+            : 'border-slate-300 bg-white hover:border-violet-400 hover:bg-slate-50'
         }`}
       >
         {isParsing ? (
-          <Loader2 className="h-10 w-10 animate-spin text-indigo-500" />
+          <Loader2 className="h-10 w-10 animate-spin text-violet-500" />
         ) : (
-          <FileUp className="h-10 w-10 text-indigo-500" />
+          <FileUp className="h-10 w-10 text-violet-500" />
         )}
         <div>
           <p className="font-medium">
