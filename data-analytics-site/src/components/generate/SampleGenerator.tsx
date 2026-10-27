@@ -1,9 +1,15 @@
 import { useId, useState } from 'react'
-import { AlertCircle, Loader2, Sparkles } from 'lucide-react'
+import { AlertCircle, ListChecks, Loader2, Sparkles } from 'lucide-react'
 import { buildBaseContext, type BaseSource } from '../../lib/generate/base'
-import { generatedToCsvData, requestSample } from '../../lib/generate/client'
+import { generatedToCsvData, requestPlan, requestSample } from '../../lib/generate/client'
+import { baseHints } from '../../lib/generate/hints'
 import { GENERATE_LIMITS, type GenerateRequest } from '../../lib/generate/schema'
-import { maxRowsFor, parseColumnSpec } from '../../lib/generate/spec'
+import {
+  asExample,
+  formatColumnSpec,
+  maxRowsFor,
+  parseColumnSpec,
+} from '../../lib/generate/spec'
 import type { CsvData } from '../../lib/parseCsv'
 import type { UnderstandingError } from '../../lib/understanding'
 
@@ -52,10 +58,14 @@ export function SampleGenerator({
   const [description, setDescription] = useState('')
   const [columnText, setColumnText] = useState('')
   const [rowText, setRowText] = useState(initialBaseId ? '' : '25')
-  const [status, setStatus] = useState<'idle' | 'loading'>('idle')
+  const [status, setStatus] = useState<'idle' | 'planning' | 'loading'>('idle')
+  /** True once Claude's plan has been filled in, until the user generates. */
+  const [planned, setPlanned] = useState(false)
   const [error, setError] = useState<UnderstandingError | null>(null)
 
   const base = baseId ? bases.find((b) => b.id === baseId) : undefined
+  const baseSource = base ? getBase(base.id)?.source : undefined
+  const hints = baseSource ? baseHints(baseSource.name, baseSource.profile) : null
   const { columns, errors } = parseColumnSpec(columnText)
   const maxRows = maxRowsFor(columns.length)
   const requestedRows =
@@ -65,7 +75,34 @@ export function SampleGenerator({
     errors.length === 0 &&
     (columns.length > 0 || base !== undefined) &&
     (rowCount !== undefined || base !== undefined) &&
-    status !== 'loading'
+    status === 'idle'
+  const canPlan =
+    errors.length === 0 &&
+    (description.trim() !== '' || columns.length > 0 || base !== undefined) &&
+    status === 'idle'
+
+  /** Asks Claude to fill in the form from what's there so far; nothing is generated yet. */
+  async function plan() {
+    const chosenBase = base ? getBase(base.id) : null
+    setStatus('planning')
+    setError(null)
+    const outcome = await requestPlan({
+      description: description.trim(),
+      columns,
+      ...(requestedRows !== undefined && { rowCount: Math.min(requestedRows, maxRows) }),
+      ...(chosenBase && { base: buildBaseContext(chosenBase.source) }),
+    })
+    setStatus('idle')
+    if (!outcome.ok) {
+      setError(outcome.error)
+      return
+    }
+    const { plan } = outcome.result
+    setDescription(plan.description)
+    setColumnText(formatColumnSpec(plan.columns))
+    setRowText(String(plan.rowCount))
+    setPlanned(true)
+  }
 
   async function generate() {
     const chosenBase = base ? getBase(base.id) : null
@@ -85,6 +122,7 @@ export function SampleGenerator({
     }
     const { data } = await generatedToCsvData(outcome.result, chosenBase ?? undefined)
     setStatus('idle')
+    setPlanned(false)
     onGenerated(data)
   }
 
@@ -103,8 +141,8 @@ export function SampleGenerator({
         </h3>
         <p className="mt-0.5 text-sm text-slate-500">
           Describe the data you want and Claude will make up realistic, fictional rows. Base it on
-          one of your datasets to get data that fits with it, such as a list of the libraries or
-          customers it mentions.
+          one of your datasets to get data that fits with it, such as a list of the people, places or
+          things it mentions.
         </p>
       </div>
 
@@ -138,11 +176,7 @@ export function SampleGenerator({
           value={description}
           maxLength={GENERATE_LIMITS.maxDescription}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder={
-            base
-              ? `e.g. One row per library in ${base.name}, with its city and opening year`
-              : 'Orders for a small online bookshop in 2024'
-          }
+          placeholder={hints?.description ?? 'Orders for a small online bookshop in 2024'}
           className={inputClass}
         />
       </div>
@@ -160,7 +194,7 @@ export function SampleGenerator({
           rows={base ? 4 : 6}
           value={columnText}
           onChange={(e) => setColumnText(e.target.value)}
-          placeholder={base ? 'library_id\ncity\nopened_year: 1950 to 2020' : EXAMPLE}
+          placeholder={asExample(hints?.columns ?? EXAMPLE)}
           className={`${inputClass} font-mono`}
           aria-describedby={errors.length > 0 ? `${ids.columns}-errors` : undefined}
         />
@@ -185,6 +219,12 @@ export function SampleGenerator({
         )}
       </div>
 
+      {planned && (
+        <p className="rounded-lg bg-violet-50 px-3 py-2 text-sm text-violet-800">
+          Claude’s plan is filled in above. Change anything you like, then generate.
+        </p>
+      )}
+
       <div className="flex flex-wrap items-end gap-4">
         <div className="space-y-1">
           <label htmlFor={ids.rows} className="text-sm font-medium text-slate-700">
@@ -201,6 +241,18 @@ export function SampleGenerator({
             className={`${inputClass} w-24`}
           />
         </div>
+        <button
+          onClick={plan}
+          disabled={!canPlan}
+          className="inline-flex items-center gap-2 rounded-lg border border-violet-200 px-4 py-2 text-sm font-medium text-violet-700 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2"
+        >
+          {status === 'planning' ? (
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          ) : (
+            <ListChecks className="h-4 w-4" aria-hidden />
+          )}
+          {status === 'planning' ? 'Planning…' : 'Plan with Claude'}
+        </button>
         <button
           onClick={generate}
           disabled={!canGenerate}
@@ -220,9 +272,13 @@ export function SampleGenerator({
           : ''}
         {status === 'loading'
           ? 'This can take up to a minute.'
-          : base
+          : status === 'planning'
+            ? 'Claude is suggesting a description, columns and a row count. No rows are made yet.'
+            : base
             ? `Sends your description and columns, plus ${base.name}'s column details, ${GENERATE_LIMITS.baseSampleRows} sample rows and up to ${GENERATE_LIMITS.baseKeyRows} distinct values from its ID and name columns, to Claude.`
             : 'Only your description and column list are sent to Claude.'}
+        {status === 'idle' &&
+          ' “Plan with Claude” fills in the boxes for you to check before anything is generated.'}
       </p>
 
       {error && (

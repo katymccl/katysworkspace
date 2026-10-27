@@ -1,5 +1,5 @@
 import { useId, useState, type FormEvent } from 'react'
-import { ArrowUp, Loader2, MessageSquare } from 'lucide-react'
+import { ArrowUp, Loader2, MessageSquare, Sparkles } from 'lucide-react'
 import type { useAsk } from '../../hooks/useAsk'
 import type { Dataset } from '../../lib/datasets'
 import { ASK_LIMITS } from '../../lib/ask/schema'
@@ -37,10 +37,17 @@ export function AskPage({ datasets, nameOf, ask }: AskPageProps) {
     e.preventDefault()
     submit(question)
   }
-  const suggestions =
-    ask.entries.length === 0
-      ? suggestQuestions(datasets.map((d) => ({ name: nameOf(d), profile: d.profile })))
-      : []
+  // Claude's suggestions once there are some; the built-in starters only before the first question.
+  const { suggested } = ask
+  const asked = new Set(ask.entries.map((e) => e.question.toLowerCase()))
+  const fromClaude = suggested.questions.length > 0
+  const suggestions = (
+    fromClaude
+      ? suggested.questions
+      : ask.entries.length === 0
+        ? suggestQuestions(datasets.map((d) => ({ name: nameOf(d), profile: d.profile })))
+        : []
+  ).filter((s) => !asked.has(s.toLowerCase()))
 
   return (
     <div className="space-y-5">
@@ -80,24 +87,54 @@ export function AskPage({ datasets, nameOf, ask }: AskPageProps) {
             )}
           </button>
         </div>
-        {suggestions.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {suggestions.map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => submit(s)}
-                className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
-              >
-                {s}
-              </button>
-            ))}
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-medium text-slate-500">
+              {fromClaude ? 'Suggested by Claude' : 'Try asking'}
+            </p>
+            <button
+              type="button"
+              onClick={() => void ask.suggestQuestions()}
+              disabled={suggested.status === 'loading'}
+              className="inline-flex items-center gap-1 text-xs font-medium text-violet-700 hover:underline disabled:cursor-not-allowed disabled:opacity-60 disabled:no-underline"
+            >
+              {suggested.status === 'loading' ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+              ) : (
+                <Sparkles className="h-3.5 w-3.5" aria-hidden />
+              )}
+              {suggested.status === 'loading'
+                ? 'Thinking of questions…'
+                : fromClaude
+                  ? 'Suggest different questions'
+                  : 'Suggest questions with Claude'}
+            </button>
           </div>
-        )}
+          {suggestions.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {suggestions.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => submit(s)}
+                  className="rounded-full border border-slate-200 px-3 py-1 text-left text-xs text-slate-600 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          )}
+          {suggested.error && (
+            <p role="alert" className="text-xs text-red-700">
+              Couldn’t get suggestions: {suggested.error.message}
+            </p>
+          )}
+        </div>
         <p className="text-xs text-slate-400">
           Asking sends your question, dataset names, descriptions, column details and a few example
           values to Claude, which plans how to answer. The answer is worked out in your browser; the
-          files themselves never leave it.
+          files themselves never leave it. Suggesting questions sends the same details, without a
+          question, and the suggestions are kept for these files.
         </p>
       </form>
 

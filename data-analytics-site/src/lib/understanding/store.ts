@@ -79,3 +79,12 @@ export function loadConfirmed(datasetId: string): ConfirmedDefinitions | null {
 export function saveConfirmed(datasetId: string, confirmed: ConfirmedDefinitions): void {
   write(`${PREFIX}:confirmed:${datasetId}`, confirmed)
 }
+
+/** Column names the user said are not identifiers, kept per datasetId across new versions. */
+export function loadDismissedIdentifiers(datasetId: string): string[] {
+  return read(`${PREFIX}:not-identifiers:${datasetId}`, z.array(z.string())) ?? []
+}
+
+export function saveDismissedIdentifiers(datasetId: string, columnNames: readonly string[]): void {
+  write(`${PREFIX}:not-identifiers:${datasetId}`, columnNames)
+}

@@ -1,8 +1,14 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import type { Dataset } from '../lib/datasets'
 import { runQuery, type QueryOutcome, type QueryTable } from '../lib/ask/execute'
-import { buildAskRequest, requestAnswer } from '../lib/ask/request'
+import {
+  buildAskRequest,
+  buildSuggestRequest,
+  requestAnswer,
+  requestQuestions,
+} from '../lib/ask/request'
 import type { AskAnswer } from '../lib/ask/schema'
+import { loadSuggestedQuestions, saveSuggestedQuestions } from '../lib/ask/store'
 import {
   applicableConfirmations,
   loadConfirmedRelationships,
@@ -26,6 +32,14 @@ export interface AskEntry {
   names: Record<string, string>
 }
 
+/** Claude's suggested questions for the open datasets; only fetched when asked for. */
+export interface SuggestedQuestions {
+  status: 'idle' | 'loading' | 'error'
+  /** Saved or freshly suggested questions; empty until there are some. */
+  questions: string[]
+  error: UnderstandingError | null
+}
+
 /**
  * A conversation of questions about the open datasets. Claude plans each answer from summaries;
  * the plan then runs here on the full rows. Lives as long as the app, not in storage, since
@@ -39,38 +53,53 @@ export function useAsk(
   // Finding links reads every value, so do it once per set of dataset versions.
   const candidatesCache = useRef<{ key: string; candidates: RelationshipCandidate[] } | null>(null)
 
+  const workspace = useMemo(() => latestVersions(datasets), [datasets])
+  const key = useMemo(
+    () =>
+      workspaceKey(
+        workspace.map((d) => ({ datasetId: d.datasetId, content: d.fingerprints.content })),
+      ),
+    [workspace],
+  )
+
+  /** Summaries, links and confirmations for the open datasets: what every request is built on. */
+  const context = useCallback(() => {
+    if (candidatesCache.current?.key !== key) {
+      candidatesCache.current = {
+        key,
+        candidates: detectRelationships(
+          workspace.map((d) => ({
+            key: d.datasetId,
+            fileName: d.fileName,
+            columns: d.columns,
+            rows: d.rows,
+            profile: d.profile,
+          })),
+        ),
+      }
+    }
+    const openColumns = new Map(workspace.map((d) => [d.datasetId, new Set(d.columns)]))
+    return {
+      summaries: workspace.map((d) => summarise(d, resolve(d))),
+      candidates: candidatesCache.current.candidates,
+      confirmed: applicableConfirmations(loadConfirmedRelationships(), openColumns),
+      rejected: applicableConfirmations(loadRejectedRelationships(), openColumns),
+    }
+  }, [key, workspace, resolve])
+
   const run = useCallback(
     async (id: string, question: string, previousQuestions: string[]) => {
       const update = (change: Partial<AskEntry>) =>
         setEntries((list) => list.map((e) => (e.id === id ? { ...e, ...change } : e)))
-      const workspace = latestVersions(datasets)
-      const key = workspaceKey(
-        workspace.map((d) => ({ datasetId: d.datasetId, content: d.fingerprints.content })),
-      )
-      if (candidatesCache.current?.key !== key) {
-        candidatesCache.current = {
-          key,
-          candidates: detectRelationships(
-            workspace.map((d) => ({
-              key: d.datasetId,
-              fileName: d.fileName,
-              columns: d.columns,
-              rows: d.rows,
-              profile: d.profile,
-            })),
-          ),
-        }
-      }
-      const openColumns = new Map(workspace.map((d) => [d.datasetId, new Set(d.columns)]))
-      const summaries = workspace.map((d) => summarise(d, resolve(d)))
+      const { summaries, candidates, confirmed, rejected } = context()
       const names = Object.fromEntries(summaries.map((s) => [s.key, s.name]))
 
       const request = buildAskRequest(
         question,
         summaries,
-        candidatesCache.current.candidates,
-        applicableConfirmations(loadConfirmedRelationships(), openColumns),
-        applicableConfirmations(loadRejectedRelationships(), openColumns),
+        candidates,
+        confirmed,
+        rejected,
         previousQuestions,
       )
       const response = await requestAnswer(request)
@@ -89,7 +118,7 @@ export function useAsk(
         names,
       })
     },
-    [datasets, resolve],
+    [context, workspace],
   )
 
   const ask = useCallback(
@@ -118,7 +147,43 @@ export function useAsk(
 
   const clear = useCallback(() => setEntries([]), [])
 
-  return { entries, ask, retry, clear, busy: entries.some((e) => e.status === 'loading') }
+  // Suggestions belong to one set of dataset versions; saved ones come back without a call.
+  const [suggestState, setSuggestState] = useState<SuggestedQuestions & { key: string }>()
+  const suggested: SuggestedQuestions =
+    suggestState?.key === key
+      ? suggestState
+      : { status: 'idle', questions: loadSuggestedQuestions(key) ?? [], error: null }
+
+  const suggestQuestions = useCallback(async () => {
+    const forKey = key
+    const previous = suggested.questions
+    setSuggestState({ key: forKey, status: 'loading', questions: previous, error: null })
+    const { summaries, candidates, confirmed, rejected } = context()
+    const response = await requestQuestions(
+      buildSuggestRequest(summaries, candidates, confirmed, rejected),
+    )
+    if (!response.ok) {
+      setSuggestState({ key: forKey, status: 'error', questions: previous, error: response.error })
+      return
+    }
+    saveSuggestedQuestions(forKey, response.result.questions)
+    setSuggestState({
+      key: forKey,
+      status: 'idle',
+      questions: response.result.questions,
+      error: null,
+    })
+  }, [key, context, suggested.questions])
+
+  return {
+    entries,
+    ask,
+    retry,
+    clear,
+    busy: entries.some((e) => e.status === 'loading'),
+    suggested,
+    suggestQuestions,
+  }
 }
 
 function blankEntry(id: string, question: string): AskEntry {

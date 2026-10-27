@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
-import { AlertCircle, Loader2, RotateCw, Share2, Sparkles } from 'lucide-react'
+import { AlertCircle, Check, Loader2, RotateCw, Share2, Sparkles, Spline } from 'lucide-react'
 import { useRelationships } from '../../hooks/useRelationships'
 import type { Dataset } from '../../lib/datasets'
+import { isConfirmed, relationshipId } from '../../lib/relationships/confirmed'
 import { asConfirmation, isShown } from '../../lib/relationships/merge'
 import { refId } from '../../lib/relationships/detect'
 import type { ResolvedUnderstanding } from '../../lib/understanding'
@@ -23,7 +24,7 @@ const ERROR_HINTS: Partial<Record<string, string>> = {
 
 /** "All datasets": how the open datasets connect, as a diagram and a list. */
 export function RelationshipsPage({ datasets, resolve }: RelationshipsPageProps) {
-  const { workspace, view, state, analyse, toggleConfirmed, toggleRejected, layoutKey } =
+  const { workspace, view, state, analyse, toggleConfirmed, toggleRejected, confirm, layoutKey } =
     useRelationships(datasets, resolve)
   const toggleById = (id: string) => {
     const item = [...view.links, ...view.similar].find((x) => x.id === id)
@@ -32,6 +33,9 @@ export function RelationshipsPage({ datasets, resolve }: RelationshipsPageProps)
   }
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showUnlikely, setShowUnlikely] = useState(false)
+  const [drawing, setDrawing] = useState(false)
+  /** The link drawn last, to say what was added. */
+  const [drawn, setDrawn] = useState<string | null>(null)
 
   const names = useMemo(
     () => new Map(workspace.map((d) => [d.datasetId, resolve(d).name.value ?? d.fileName])),
@@ -53,6 +57,7 @@ export function RelationshipsPage({ datasets, resolve }: RelationshipsPageProps)
           isIdentifier: c.isPotentialIdentifier,
         })),
         new Set(d.columns.filter((c) => linked.has(`${d.datasetId}:${c}`))),
+        drawing,
       )
       return {
         id: d.datasetId,
@@ -63,7 +68,7 @@ export function RelationshipsPage({ datasets, resolve }: RelationshipsPageProps)
         hiddenCount,
       }
     })
-  }, [workspace, links, names])
+  }, [workspace, links, names, drawing])
 
   if (workspace.length < 2) {
     return (
@@ -140,8 +145,47 @@ export function RelationshipsPage({ datasets, resolve }: RelationshipsPageProps)
         )}
       </section>
 
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-slate-600" aria-live="polite">
+          {drawn ??
+            (drawing
+              ? 'Drag from the dot beside a column to the matching column in another dataset.'
+              : 'Missing a link, or is one wrong? Draw your own, or mark one not related below.')}
+        </p>
+        <button
+          onClick={() => {
+            setDrawing((d) => !d)
+            setDrawn(null)
+          }}
+          aria-pressed={drawing}
+          className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${
+            drawing
+              ? 'bg-violet-600 text-white hover:bg-violet-700'
+              : 'border border-violet-200 text-violet-700 hover:bg-violet-50'
+          }`}
+        >
+          {drawing ? (
+            <Check className="h-4 w-4" aria-hidden />
+          ) : (
+            <Spline className="h-4 w-4" aria-hidden />
+          )}
+          {drawing ? 'Done' : 'Draw a link'}
+        </button>
+      </div>
       <RelationshipDiagram
         key={layoutKey}
+        drawing={drawing}
+        onDrawLink={(link) => {
+          const r = { kind: 'link' as const, ...link }
+          const existing = view.links.find((l) =>
+            isConfirmed([{ kind: 'link', from: l.from, to: l.to }], r),
+          )
+          confirm(r)
+          setSelectedId(existing?.id ?? relationshipId(r))
+          setDrawn(
+            `Linked ${nameOf(link.from.dataset)} ${link.from.column} to ${nameOf(link.to.dataset)} ${link.to.column}. Double-click the line to remove it.`,
+          )
+        }}
         layoutKey={layoutKey}
         nodes={nodes}
         links={links}
@@ -153,13 +197,14 @@ export function RelationshipsPage({ datasets, resolve }: RelationshipsPageProps)
       <p className="text-xs text-slate-500">
         {Object.values(CONFIDENCE_LABELS).join(' · ')} · Arrows point to the side where each value
         appears once. Drag the boxes to rearrange them. Click a line or list item to highlight it;
-        double-click it to confirm it.
+        double-click it to confirm it, or to remove a link you confirmed or drew.
       </p>
 
       {links.length === 0 && similar.length === 0 ? (
         <p className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-6 text-center text-sm text-slate-500">
           No shared values were found between these datasets.
-          {!hasAnalysis && ' Claude may still spot links from what the columns mean.'}
+          {!hasAnalysis && ' Claude may still spot links from what the columns mean.'} You can
+          also connect two columns yourself with “Draw a link”.
         </p>
       ) : (
         <section>

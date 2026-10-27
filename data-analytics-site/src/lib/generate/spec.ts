@@ -49,3 +49,16 @@ export function maxRowsFor(columnCount: number): number {
   if (columnCount === 0) return GENERATE_LIMITS.maxRows
   return Math.min(GENERATE_LIMITS.maxRows, Math.floor(GENERATE_LIMITS.maxCells / columnCount))
 }
+
+/** The column box's text for a list of columns: the reverse of parseColumnSpec. */
+export function formatColumnSpec(columns: GenerateRequest['columns']): string {
+  return columns.map((c) => (c.hint ? `${c.name}: ${c.hint}` : c.name)).join('\n')
+}
+
+/** Marks placeholder lines as an example, keeping them aligned in a monospace box. */
+export function asExample(text: string): string {
+  return text
+    .split('\n')
+    .map((line, i) => (i === 0 ? `e.g. ${line}` : `     ${line}`))
+    .join('\n')
+}

@@ -4,6 +4,12 @@ import type { RelationshipCandidate } from '../relationships/detect'
 import type { DatasetSummary } from '../relationships/request'
 import { OUTPUT_LIMITS, REQUEST_LIMITS } from '../understanding/schema'
 import {
+  SuggestQuestionsResultSchema,
+  reconcileQuestions,
+  type SuggestQuestionsRequest,
+  type SuggestQuestionsResult,
+} from './questions'
+import {
   ASK_LIMITS,
   AskResultSchema,
   reconcilePlan,
@@ -82,6 +88,31 @@ export function buildAskRequest(
         .slice(-ASK_LIMITS.maxPreviousQuestions)
         .map((q) => t(q, ASK_LIMITS.maxQuestionLength)),
     }),
+  }
+}
+
+/** The same summaries and links as a question, for asking Claude what to ask. */
+export function buildSuggestRequest(
+  datasets: readonly DatasetSummary[],
+  candidates: readonly RelationshipCandidate[],
+  confirmed: readonly ConfirmedRelationship[] = [],
+  rejected: readonly ConfirmedRelationship[] = [],
+): SuggestQuestionsRequest {
+  const { datasets: summaries, links } = buildAskRequest('', datasets, candidates, confirmed, rejected)
+  return { datasets: summaries, links }
+}
+
+export async function requestQuestions(
+  request: SuggestQuestionsRequest,
+  signal?: AbortSignal,
+): Promise<AiOutcome<SuggestQuestionsResult>> {
+  const outcome = await postToAi('/api/questions', request, SuggestQuestionsResultSchema, {
+    signal,
+  })
+  if (!outcome.ok) return outcome
+  return {
+    ok: true,
+    result: { ...outcome.result, questions: reconcileQuestions(outcome.result.questions) },
   }
 }
 

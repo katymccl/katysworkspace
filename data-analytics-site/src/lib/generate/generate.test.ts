@@ -226,6 +226,16 @@ describe('toCsvText', () => {
     expect(parsed.data).toEqual([columns, ...rows])
   })
 
+  it('ends with a line break that a parser does not read into the last value', () => {
+    const parsed = Papa.parse<string[]>(toCsvText(['a', 'b'], [['1', 'last']]), {
+      skipEmptyLines: 'greedy',
+    })
+    expect(parsed.data).toEqual([
+      ['a', 'b'],
+      ['1', 'last'],
+    ])
+  })
+
   it('escapes formula-like values for spreadsheets but keeps negative numbers', () => {
     const parsed = Papa.parse<string[]>(toCsvText(columns, rows, { forSpreadsheet: true }).trim())
     expect(parsed.data[1][2]).toBe('-5')

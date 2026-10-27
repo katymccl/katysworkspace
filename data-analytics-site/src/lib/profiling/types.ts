@@ -102,6 +102,11 @@ export interface ColumnProfile {
   isPotentialIdentifier: boolean
   /** Why the column looks like an identifier (an ID, a code or a name), in a fixed order. */
   identifierReasons: IdentifierReason[]
+  /**
+   * True when the user said this column is not an identifier although it has reasons; then
+   * isPotentialIdentifier is false and the reasons are kept so the flag can be restored.
+   */
+  identifierDismissed: boolean
   /** The first distinct non-missing raw values in row order, unmodified. */
   sampleValues: string[]
   /** Set for `integer` and `decimal` columns, otherwise null. */

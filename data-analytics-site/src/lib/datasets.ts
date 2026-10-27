@@ -1,6 +1,6 @@
 import type { MatchReason } from './identity'
 import type { CsvData } from './parseCsv'
-import { profileDataset, type DatasetProfile } from './profiling'
+import { profileDataset, withDismissedIdentifiers, type DatasetProfile } from './profiling'
 
 export interface Dataset extends CsvData {
   /** Identifies this open copy in the app (two uploads of one file get different ids). */
@@ -9,7 +9,10 @@ export interface Dataset extends CsvData {
   datasetId: string
   /** How this upload was matched to datasetId. */
   matchedBy: MatchReason
-  /** Computed once on upload; each dataset is profiled independently. */
+  /**
+   * Computed once on upload; each dataset is profiled independently. Identifier flags the user
+   * removed are applied on top.
+   */
   profile: DatasetProfile
 }
 
@@ -25,6 +28,8 @@ export type View =
 export function toDataset(
   data: CsvData,
   identity: { datasetId: string; matchedBy: MatchReason },
+  dismissedIdentifiers: readonly string[] = [],
 ): Dataset {
-  return { ...data, ...identity, id: crypto.randomUUID(), profile: profileDataset(data) }
+  const profile = withDismissedIdentifiers(profileDataset(data), dismissedIdentifiers)
+  return { ...data, ...identity, id: crypto.randomUUID(), profile }
 }

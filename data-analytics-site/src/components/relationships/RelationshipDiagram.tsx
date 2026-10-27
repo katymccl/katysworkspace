@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react'
 import {
   Background,
+  ConnectionMode,
   Controls,
   MarkerType,
   Panel,
   ReactFlow,
+  type Connection,
   type Edge,
   type EdgeMouseHandler,
   type OnNodesChange,
@@ -12,7 +14,14 @@ import {
 import '@xyflow/react/dist/style.css'
 import type { DiagramLink, DiagramSimilarity } from '../../lib/relationships/merge'
 import { DatasetNode, type DatasetNodeType } from './DatasetNode'
-import { HEADER_COLUMN, handleId, layoutNodes, type LayoutEdge, type NodeModel } from './layout'
+import {
+  HEADER_COLUMN,
+  drawnLink,
+  handleId,
+  layoutNodes,
+  type LayoutEdge,
+  type NodeModel,
+} from './layout'
 import { cardinalityLabel, linkStyle } from './linkStyle'
 import { loadPositions, savePositions, type Positions } from './positions'
 
@@ -28,13 +37,18 @@ interface RelationshipDiagramProps {
   onToggleConfirmed: (id: string) => void
   /** Identifies this set of datasets, so dragged positions are saved and restored for it. */
   layoutKey: string
+  /** While true, every column shows a dot that can be dragged to a column in another box. */
+  drawing: boolean
+  /** A line the user drew from one column to another. */
+  onDrawLink: (link: NonNullable<ReturnType<typeof drawnLink>>) => void
 }
 
 /**
  * The relationship diagram: a box per dataset, lines between related columns. Positions come from
  * a deterministic layout until the user drags a box, after which its dragged position is kept (and
- * saved) until "Reset layout". Users can't draw new lines. Clicking a line selects it;
- * double-clicking confirms or un-confirms it.
+ * saved) until "Reset layout". In drawing mode, users drag from a column's dot to a column in
+ * another box to add a link. Clicking a line selects it; double-clicking confirms or un-confirms
+ * it.
  */
 export function RelationshipDiagram({
   nodes,
@@ -44,6 +58,8 @@ export function RelationshipDiagram({
   onSelect,
   onToggleConfirmed,
   layoutKey,
+  drawing,
+  onDrawLink,
 }: RelationshipDiagramProps) {
   // Boxes the user has moved, by dataset. The page remounts this component (key) per layoutKey.
   const [moved, setMoved] = useState<Positions>(() => loadPositions(layoutKey))
@@ -62,8 +78,8 @@ export function RelationshipDiagram({
       id: model.id,
       type: 'dataset',
       position: positions.get(model.id)!,
-      data: { model },
-      connectable: false,
+      data: { model, drawing },
+      connectable: drawing,
       ariaLabel: `${model.title}, ${model.columns.length} columns shown`,
     }))
 
@@ -125,7 +141,7 @@ export function RelationshipDiagram({
       }),
     ]
     return { flowNodes, edges }
-  }, [nodes, links, similar, selectedId, moved])
+  }, [nodes, links, similar, selectedId, moved, drawing])
 
   // A double-click starts with two clicks, so clicking only selects (never deselects) to keep the
   // line selected through a double-click.
@@ -149,13 +165,24 @@ export function RelationshipDiagram({
     })
   }
 
+  const isValidConnection = (c: Connection | Edge) =>
+    drawnLink({ ...c, sourceHandle: c.sourceHandle, targetHandle: c.targetHandle }) !== null
+  const onConnect = (c: Connection) => {
+    const link = drawnLink(c)
+    if (link) onDrawLink(link)
+  }
+
   const resetLayout = () => {
     setMoved({})
     savePositions(layoutKey, {})
   }
 
   return (
-    <div className="h-[28rem] overflow-hidden rounded-xl border border-slate-200 bg-white sm:h-[32rem]">
+    <div
+      className={`h-[28rem] overflow-hidden rounded-xl border bg-white sm:h-[32rem] ${
+        drawing ? 'border-violet-300 ring-2 ring-violet-100' : 'border-slate-200'
+      }`}
+    >
       <ReactFlow
         nodes={flowNodes}
         edges={edges}
@@ -165,7 +192,11 @@ export function RelationshipDiagram({
         zoomOnDoubleClick={false}
         onPaneClick={() => onSelect(null)}
         onNodesChange={onNodesChange}
-        nodesConnectable={false}
+        nodesConnectable={drawing}
+        connectionMode={ConnectionMode.Loose}
+        isValidConnection={isValidConnection}
+        onConnect={onConnect}
+        connectionLineStyle={{ stroke: '#8b5cf6', strokeWidth: 2, strokeDasharray: '6 4' }}
         nodesDraggable
         edgesFocusable
         fitView

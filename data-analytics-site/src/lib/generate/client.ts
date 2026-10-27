@@ -2,6 +2,7 @@ import Papa from 'papaparse'
 import { postToAi, type AiOutcome } from '../ai/post'
 import { parseCsv, type CsvData } from '../parseCsv'
 import { checkLinks, type BaseSource } from './base'
+import { PlanResultSchema, reconcilePlan, type PlanRequest, type PlanResult } from './plan'
 import {
   GenerateResultSchema,
   reconcileGenerated,
@@ -42,7 +43,9 @@ export function toCsvText(
     { fields: [...columns], data: rows.map((r) => [...r]) },
     forSpreadsheet ? { escapeFormulae: /^[=@\t\r]/ } : {},
   )
-  return `${csv}\n`
+  // End with the same line break Papa uses between rows, or a parser reading it back may take a
+  // lone "\n" as part of the last value.
+  return `${csv}\r\n`
 }
 
 /**
@@ -75,4 +78,14 @@ export async function generatedToCsvData(
       },
     },
   }
+}
+
+/** Asks the server to plan a dataset (description, columns, rows) without making any rows. */
+export async function requestPlan(
+  request: PlanRequest,
+  signal?: AbortSignal,
+): Promise<AiOutcome<PlanResult>> {
+  const outcome = await postToAi('/api/plan', request, PlanResultSchema, { signal })
+  if (!outcome.ok) return outcome
+  return { ok: true, result: { ...outcome.result, plan: reconcilePlan(outcome.result.plan) } }
 }

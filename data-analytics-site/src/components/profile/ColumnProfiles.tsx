@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { Star } from 'lucide-react'
 import type { ColumnProfile, NumericStats } from '../../lib/profiling'
 import { formatNumber, formatPercent, plural } from './format'
 import { IdentifierStar } from './IdentifierStar'
@@ -12,9 +13,15 @@ interface ColumnProfilesProps {
   columns: ColumnProfile[]
   /** Optional extra content for each card, such as the column's confirmed or suggested meaning. */
   renderDefinition?: (column: ColumnProfile) => ReactNode
+  /** Removes (true) or restores (false) a column's potential identifier flag. */
+  onIdentifierDismissed?: (columnName: string, dismissed: boolean) => void
 }
 
-export function ColumnProfiles({ columns, renderDefinition }: ColumnProfilesProps) {
+export function ColumnProfiles({
+  columns,
+  renderDefinition,
+  onIdentifierDismissed,
+}: ColumnProfilesProps) {
   if (columns.length === 0) return null
 
   return (
@@ -29,14 +36,29 @@ export function ColumnProfiles({ columns, renderDefinition }: ColumnProfilesProp
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {columns.map((column) => (
-          <ColumnCard key={column.index} column={column} definition={renderDefinition?.(column)} />
+          <ColumnCard
+            key={column.index}
+            column={column}
+            definition={renderDefinition?.(column)}
+            onIdentifierDismissed={
+              onIdentifierDismissed && ((dismissed) => onIdentifierDismissed(column.name, dismissed))
+            }
+          />
         ))}
       </div>
     </section>
   )
 }
 
-function ColumnCard({ column, definition }: { column: ColumnProfile; definition?: ReactNode }) {
+function ColumnCard({
+  column,
+  definition,
+  onIdentifierDismissed,
+}: {
+  column: ColumnProfile
+  definition?: ReactNode
+  onIdentifierDismissed?: (dismissed: boolean) => void
+}) {
   return (
     <article className="flex min-w-0 flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4">
       <header className="flex items-start justify-between gap-2">
@@ -44,13 +66,28 @@ function ColumnCard({ column, definition }: { column: ColumnProfile; definition?
           <span className="truncate" title={column.name}>
             {column.name || <span className="italic text-slate-400">(no name)</span>}
           </span>
-          {column.isPotentialIdentifier && <IdentifierStar label={identifierLabel(column)} />}
+          {onIdentifierDismissed ? (
+            <IdentifierToggle column={column} onChange={onIdentifierDismissed} />
+          ) : (
+            column.isPotentialIdentifier && <IdentifierStar label={identifierLabel(column)} />
+          )}
         </h4>
         <TypeBadge type={column.inferredType} />
       </header>
       {column.isPotentialIdentifier && (
         <p className="-mt-2 text-xs text-slate-500">
           {column.identifierReasons.map(describeReason).join(' · ')}
+        </p>
+      )}
+      {column.identifierDismissed && onIdentifierDismissed && (
+        <p className="-mt-2 text-xs text-slate-400">
+          Identifier flag removed ·{' '}
+          <button
+            onClick={() => onIdentifierDismissed(false)}
+            className="font-medium text-violet-700 hover:underline"
+          >
+            Restore
+          </button>
         </p>
       )}
 
@@ -74,6 +111,42 @@ function ColumnCard({ column, definition }: { column: ColumnProfile; definition?
       <ColumnDetail column={column} />
       {definition}
     </article>
+  )
+}
+
+/**
+ * The card's star as a switch: a filled star removes the potential identifier flag, the hollow
+ * star left behind restores it. Columns that were never flagged get no star.
+ */
+function IdentifierToggle({
+  column,
+  onChange,
+}: {
+  column: ColumnProfile
+  onChange: (dismissed: boolean) => void
+}) {
+  if (!column.isPotentialIdentifier && !column.identifierDismissed) return null
+  const dismissed = column.identifierDismissed
+  const label = dismissed
+    ? `Not an identifier. Click to mark ${column.name} as a potential identifier again`
+    : `${identifierLabel(column)}. Click if ${column.name} is not an identifier`
+
+  return (
+    <button
+      onClick={() => onChange(!dismissed)}
+      aria-label={label}
+      title={dismissed ? 'Click to restore the identifier flag' : 'Click to remove the identifier flag'}
+      className="group -m-1 shrink-0 rounded p-1 hover:bg-violet-50"
+    >
+      <Star
+        className={`h-3.5 w-3.5 ${
+          dismissed
+            ? 'text-slate-300 group-hover:text-violet-500'
+            : 'fill-violet-500 text-violet-500 group-hover:fill-transparent'
+        }`}
+        aria-hidden
+      />
+    </button>
   )
 }
 

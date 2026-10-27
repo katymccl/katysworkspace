@@ -135,6 +135,7 @@ function profileColumn(
     isUnique,
     isPotentialIdentifier: identifierReasons.length > 0,
     identifierReasons,
+    identifierDismissed: false,
     sampleValues,
     numericStats:
       inferredType === 'integer' || inferredType === 'decimal' ? numericStats(numbers) : null,

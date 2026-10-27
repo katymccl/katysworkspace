@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { Download, FileSpreadsheet, Sparkles, X } from 'lucide-react'
+import { BrushCleaning, Download, FileSpreadsheet, Sparkles, X } from 'lucide-react'
 import type { Dataset } from '../lib/datasets'
 import { toCsvText } from '../lib/generate/client'
 import { formatBytes } from '../lib/parseCsv'
@@ -26,6 +26,11 @@ interface CsvPreviewProps {
   onRemove: () => void
   /** Opens the generator with this dataset as the base. */
   onGenerateRelated?: () => void
+  /** Removes (true) or restores (false) a column's potential identifier flag. */
+  onIdentifierDismissed?: (columnName: string, dismissed: boolean) => void
+  /** Opens "Prepare my data"; the panel itself is passed as `cleanPanel` while it's open. */
+  onClean?: () => void
+  cleanPanel?: ReactNode
 }
 
 interface HeaderTip {
@@ -40,6 +45,9 @@ export function CsvPreview({
   renderDefinition,
   onRemove,
   onGenerateRelated,
+  onIdentifierDismissed,
+  onClean,
+  cleanPanel,
 }: CsvPreviewProps) {
   const shown = data.rows.slice(0, PREVIEW_ROWS)
   const { profile } = data
@@ -67,6 +75,11 @@ export function CsvPreview({
                     AI-generated sample
                   </span>
                 )}
+                {data.cleanedAt && (
+                  <span className="rounded-md bg-green-50 px-1.5 py-0.5 text-xs font-medium text-green-700">
+                    Prepared
+                  </span>
+                )}
               </div>
               <p className="text-sm text-slate-500">
                 {title && title !== data.fileName && `${data.fileName} · `}
@@ -76,6 +89,14 @@ export function CsvPreview({
             </div>
           </div>
           <div className="flex flex-wrap gap-1">
+            {onClean && !cleanPanel && (
+              <button
+                onClick={onClean}
+                className="flex items-center gap-1 rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2"
+              >
+                <BrushCleaning className="h-4 w-4" aria-hidden /> Prepare my data
+              </button>
+            )}
             {onGenerateRelated && (
               <button
                 onClick={onGenerateRelated}
@@ -84,7 +105,7 @@ export function CsvPreview({
                 <Sparkles className="h-4 w-4" /> Generate related dataset
               </button>
             )}
-            {data.generatedBy && (
+            {(data.generatedBy || data.cleanedAt) && (
               <button
                 onClick={() => downloadCsv(data)}
                 className="flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
@@ -99,6 +120,12 @@ export function CsvPreview({
               <X className="h-4 w-4" /> Remove
             </button>
           </div>
+          {data.cleanedAt && !data.generatedBy && (
+            <p className="w-full text-xs text-slate-500">
+              This prepared version lives in this browser only; your original file hasn’t changed.
+              Download it to keep it.
+            </p>
+          )}
           {data.generatedBy && (
             <p className="w-full text-xs text-slate-500">
               Fictional data made up by Claude for exploring sema; it doesn’t describe anything
@@ -135,6 +162,8 @@ export function CsvPreview({
           )}
         </div>
 
+        {cleanPanel}
+
         {data.warnings.length > 0 && (
           <details className="rounded-lg bg-amber-50 px-4 py-2 text-sm text-amber-800">
             <summary className="cursor-pointer">
@@ -153,7 +182,11 @@ export function CsvPreview({
         <ProfileSummary profile={profile} />
       </div>
 
-      <ColumnProfiles columns={profile.columns} renderDefinition={renderDefinition} />
+      <ColumnProfiles
+        columns={profile.columns}
+        renderDefinition={renderDefinition}
+        onIdentifierDismissed={onIdentifierDismissed}
+      />
 
       <div>
         <h3 className="mb-3 font-medium text-slate-900">Data preview</h3>

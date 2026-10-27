@@ -1,4 +1,5 @@
 import { Suspense, lazy, useEffect, useRef, useState } from 'react'
+import { CleanPanel } from './components/clean/CleanPanel'
 import { Menu } from 'lucide-react'
 import { AskPage } from './components/ask/AskPage'
 import { CsvPreview } from './components/CsvPreview'
@@ -13,17 +14,21 @@ import { Wordmark } from './components/Wordmark'
 import { useAsk } from './hooks/useAsk'
 import { useUnderstanding } from './hooks/useUnderstanding'
 import { toDataset, type Dataset, type View } from './lib/datasets'
+import { cleanedCsvData } from './lib/clean/version'
 import { matchDataset, recordUpload, type MatchReason } from './lib/identity'
 import type { BaseSource } from './lib/generate/base'
-import type { CsvData } from './lib/parseCsv'
+import type { CsvData, CsvRow } from './lib/parseCsv'
+import { withDismissedIdentifiers } from './lib/profiling'
 import {
   EMPTY_CONFIRMED,
   acceptAllSuggestions,
   confirmColumn,
   confirmDatasetField,
+  loadDismissedIdentifiers,
   loadRegistry,
   revertColumn,
   revertDatasetField,
+  saveDismissedIdentifiers,
   saveRegistry,
   type ConfirmedDefinitions,
   type ResolvedUnderstanding,
@@ -97,7 +102,7 @@ function App() {
         continue
       }
 
-      const dataset = toDataset(data, identity)
+      const dataset = toDataset(data, identity, loadDismissedIdentifiers(identity.datasetId))
       added.push(dataset)
       firstShown ??= dataset.id
       messages.push(
@@ -125,6 +130,43 @@ function App() {
     const remaining = datasets.filter((d) => d.id !== id)
     setDatasets(remaining)
     setView(remaining.length > 0 ? { kind: 'dataset', id: remaining[0].id } : { kind: 'upload' })
+  }
+
+  /**
+   * Replaces an open dataset with its cleaned rows, as a new version of the same dataset: its
+   * definitions and identifier choices carry over, and the registry remembers the new content.
+   */
+  async function handleCleaned(id: string, columns: string[], rows: CsvRow[], message: string) {
+    const old = datasets.find((d) => d.id === id)
+    if (!old) return
+    const data = await cleanedCsvData(old, columns, rows)
+    const identity = {
+      datasetId: old.datasetId,
+      fingerprints: data.fingerprints,
+      matchedBy: 'new-version' as const,
+    }
+    saveRegistry(recordUpload(loadRegistry(), identity, data.fileName, new Date().toISOString()))
+    const cleaned = {
+      ...toDataset(data, identity, loadDismissedIdentifiers(old.datasetId)),
+      id: old.id,
+    }
+    understanding.restore([cleaned])
+    setDatasets((prev) => prev.map((d) => (d.id === id ? cleaned : d)))
+    setNotices([notice('success', message)])
+  }
+
+  /** Removes or restores a column's identifier flag, for every open version of the dataset. */
+  function handleIdentifierDismissed(datasetId: string, columnName: string, dismissed: boolean) {
+    const names = loadDismissedIdentifiers(datasetId).filter((n) => n !== columnName)
+    if (dismissed) names.push(columnName)
+    saveDismissedIdentifiers(datasetId, names)
+    setDatasets((prev) =>
+      prev.map((d) => {
+        if (d.datasetId !== datasetId) return d
+        const profile = withDismissedIdentifiers(d.profile, names)
+        return profile === d.profile ? d : { ...d, profile }
+      }),
+    )
   }
 
   const selected = view.kind === 'dataset' ? datasets.find((d) => d.id === view.id) : undefined
@@ -260,6 +302,12 @@ function App() {
                 understanding={understanding}
                 onRemove={() => handleRemove(selected.id)}
                 onGenerateRelated={() => setView({ kind: 'upload', baseId: selected.id })}
+                onIdentifierDismissed={(name, dismissed) =>
+                  handleIdentifierDismissed(selected.datasetId, name, dismissed)
+                }
+                onCleaned={(columns, rows, message) =>
+                  handleCleaned(selected.id, columns, rows, message)
+                }
               />
             )}
           </div>
@@ -284,13 +332,20 @@ function DatasetPage({
   understanding,
   onRemove,
   onGenerateRelated,
+  onIdentifierDismissed,
+  onCleaned,
 }: {
   dataset: Dataset
   understanding: ReturnType<typeof useUnderstanding>
   onRemove: () => void
   onGenerateRelated: () => void
+  onIdentifierDismissed: (columnName: string, dismissed: boolean) => void
+  onCleaned: (columns: string[], rows: CsvRow[], message: string) => Promise<void>
 }) {
   const resolved = understanding.resolve(dataset)
+  // Which open dataset "Prepare my data" is showing for; switching datasets closes it.
+  const [cleaningId, setCleaningId] = useState<string | null>(null)
+  const cleaning = cleaningId === dataset.id
   const update = (change: (c: ConfirmedDefinitions) => ConfirmedDefinitions) =>
     understanding.updateConfirmed(dataset.datasetId, change)
 
@@ -300,6 +355,28 @@ function DatasetPage({
       title={resolved.name.value ?? dataset.fileName}
       onRemove={onRemove}
       onGenerateRelated={onGenerateRelated}
+      onIdentifierDismissed={onIdentifierDismissed}
+      onClean={() => setCleaningId(dataset.id)}
+      cleanPanel={
+        cleaning && (
+          <CleanPanel
+            dataset={dataset}
+            context={{
+              name: resolved.name.value ?? dataset.fileName,
+              description: resolved.description.value,
+              rowMeaning: resolved.rowMeaning.value,
+              columnDescriptions: new Map(
+                resolved.columns.map((c) => [c.name, c.description.value]),
+              ),
+            }}
+            onApply={async ({ columns, rows }, message) => {
+              await onCleaned(columns, rows, message)
+              setCleaningId(null)
+            }}
+            onClose={() => setCleaningId(null)}
+          />
+        )
+      }
       about={
         <UnderstandingPanel
           resolved={resolved}

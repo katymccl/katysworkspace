@@ -23,7 +23,8 @@ export function buildAiInput(
       missingRatio: c.missingRatio,
       distinctCount: c.distinctCount,
       uniquenessRatio: c.uniquenessRatio,
-      identifierReasons: c.identifierReasons
+      // A flag the user removed is not evidence worth sending.
+      identifierReasons: (c.isPotentialIdentifier ? c.identifierReasons : [])
         .slice(0, REQUEST_LIMITS.maxReasonsPerColumn)
         .map((r) => clip(reasonLabel(r), REQUEST_LIMITS.maxTextLength)),
       numericStats: c.numericStats

@@ -95,6 +95,13 @@ export function useRelationships(
   )
   const toggle = useCallback((r: ConfirmedRelationship) => decide(r, 'confirmed'), [decide])
   const toggleRejected = useCallback((r: ConfirmedRelationship) => decide(r, 'rejected'), [decide])
+  /** Confirms a relationship the user drew; one already confirmed stays as it is. */
+  const confirm = useCallback(
+    (r: ConfirmedRelationship) => {
+      if (!isConfirmed(allConfirmed, r)) decide(r, 'confirmed')
+    },
+    [allConfirmed, decide],
+  )
 
   const [states, setStates] = useState<Record<string, AnalysisState>>({})
   const saved = useMemo(() => loadAnalysis(key), [key])
@@ -137,6 +144,7 @@ export function useRelationships(
     analyse,
     toggleConfirmed: toggle,
     toggleRejected,
+    confirm,
     layoutKey: key,
   }
 }

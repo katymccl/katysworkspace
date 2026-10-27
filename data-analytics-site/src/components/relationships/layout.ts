@@ -17,6 +17,34 @@ export const handleId = (column: string, side: 'left' | 'right', kind: 'source' 
 /** Anchor name for a box's header, used for dataset-level links such as "same columns". */
 export const HEADER_COLUMN = '\u0000header'
 
+/**
+ * The column a handle belongs to (the reverse of handleId), or null for the header anchor or an
+ * unknown id.
+ */
+export function columnOfHandle(id: string | null | undefined): string | null {
+  const match = id?.match(/^(?:source|target):(?:left|right):([\s\S]*)$/)
+  if (!match || match[1] === HEADER_COLUMN) return null
+  return match[1]
+}
+
+/** A line the user drew between two columns: a link, unless both ends are in one dataset. */
+export function drawnLink(connection: {
+  source: string
+  target: string
+  sourceHandle?: string | null
+  targetHandle?: string | null
+}): { from: { dataset: string; column: string }; to: { dataset: string; column: string } } | null {
+  const fromColumn = columnOfHandle(connection.sourceHandle)
+  const toColumn = columnOfHandle(connection.targetHandle)
+  if (fromColumn === null || toColumn === null || connection.source === connection.target) {
+    return null
+  }
+  return {
+    from: { dataset: connection.source, column: fromColumn },
+    to: { dataset: connection.target, column: toColumn },
+  }
+}
+
 export interface NodeColumn {
   name: string
   type: InferredType
@@ -37,13 +65,16 @@ export interface NodeModel {
 
 /**
  * Chooses which columns a box lists: those in a drawn relationship and likely identifiers, in file
- * order, up to MAX_COLUMNS_SHOWN (linked ones first if there are too many).
+ * order, up to MAX_COLUMNS_SHOWN (linked ones first if there are too many). With showAll, every
+ * column, so the user can draw a link from any of them.
  */
 export function pickColumns(
   all: readonly Omit<NodeColumn, 'linked'>[],
   linked: ReadonlySet<string>,
+  showAll = false,
 ): { columns: NodeColumn[]; hiddenCount: number } {
   const marked = all.map((c) => ({ ...c, linked: linked.has(c.name) }))
+  if (showAll) return { columns: marked, hiddenCount: 0 }
   const relevant = marked.filter((c) => c.linked || c.isIdentifier)
   const chosen =
     relevant.length <= MAX_COLUMNS_SHOWN

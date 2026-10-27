@@ -21,6 +21,8 @@ export interface CsvData {
     /** The dataset it was made to complement, and how well its claimed links really match. */
     basedOn?: { datasetId: string; name: string; linkChecks: LinkCheck[] }
   }
+  /** Set when this version was made with "Prepare my data" rather than uploaded. */
+  cleanedAt?: string
 }
 
 export const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50 MB

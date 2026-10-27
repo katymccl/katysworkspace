@@ -33,3 +33,22 @@ filters, groups, totals and sort order. The plan runs in the browser on every ro
 - Each answer shows a table, a bar or line chart when it fits, notes (unmatched or repeated rows,
   skipped values), the plan as plain steps, and a CSV download.
 - Follow-up questions see the earlier questions, so "and by month?" works.
+- "Suggest questions with Claude" sends the same summaries (no question) to `api/questions.ts` and
+  shows up to six questions the plan can answer. They are saved in the browser per set of open
+  file versions, so they come back without another call.
+
+## Prepare my data
+
+"Prepare my data" on a dataset page lists missing values, exact duplicate rows and values that don't
+fit their column's type (a column counts as numbers, dates or yes/no when at least 80% of its
+values are, or all but one in a small column). This runs in the browser on every row
+(`src/lib/clean/detect.ts`). You remove duplicates, edit flagged cells or leave them, and applying
+makes a new version of the dataset in the browser (the original file is unchanged; download it to
+keep it).
+
+"Suggest fixes with Claude" (`api/clean.ts`) sends only the flagged rows (up to 40), column details
+and the values of short text columns. Claude suggests fixes it is confident about and groups of
+values spelled several ways ("NY", "N.Y." → "New York"); each is a button you choose to use.
+
+"Plan with Claude" in the sample generator (`api/plan.ts`) fills in a description, columns and a
+row count to edit before anything is generated.

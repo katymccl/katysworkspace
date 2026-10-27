@@ -10,7 +10,10 @@ const API_ROUTES = {
   '/api/understand': { module: '/api/_lib/understand.ts', handler: 'handleUnderstand' },
   '/api/relationships': { module: '/api/_lib/relationships.ts', handler: 'handleRelationships' },
   '/api/generate': { module: '/api/_lib/generate.ts', handler: 'handleGenerate' },
+  '/api/plan': { module: '/api/_lib/plan.ts', handler: 'handlePlan' },
   '/api/ask': { module: '/api/_lib/ask.ts', handler: 'handleAsk' },
+  '/api/questions': { module: '/api/_lib/questions.ts', handler: 'handleSuggestQuestions' },
+  '/api/clean': { module: '/api/_lib/clean.ts', handler: 'handleClean' },
 } as const
 
 function apiDevMiddleware(): Plugin {
