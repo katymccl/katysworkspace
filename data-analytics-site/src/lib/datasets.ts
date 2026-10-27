@@ -19,6 +19,7 @@ export type View =
   /** baseId: an open dataset to pre-select as the base for generating a related one. */
   | { kind: 'upload'; baseId?: string }
   | { kind: 'all' }
+  | { kind: 'ask' }
   | { kind: 'dataset'; id: string }
 
 export function toDataset(

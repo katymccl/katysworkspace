@@ -5,6 +5,7 @@ import {
   Database,
   FileSpreadsheet,
   Layers,
+  MessageSquare,
   Plus,
   Sparkles,
   X,
@@ -56,6 +57,15 @@ export function Sidebar({
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 pb-4">
+        <div className="mb-1">
+          <NavItem
+            icon={<MessageSquare className="h-4 w-4" />}
+            label="Ask your data"
+            active={view.kind === 'ask'}
+            disabled={datasets.length === 0}
+            onClick={() => onSelect({ kind: 'ask' })}
+          />
+        </div>
         <button
           onClick={onToggleDatasets}
           aria-expanded={datasetsOpen}

@@ -75,6 +75,31 @@ function isDate(text: string): boolean {
   return false
 }
 
+/**
+ * The calendar day and UTC timestamp of a date cell, or null if it isn't one. Slash dates are read
+ * month-first unless only the day-first reading is a real day. Time zones are ignored, so a value
+ * always lands on the day written in it.
+ */
+export function parseDate(
+  value: RawValue,
+): { year: number; month: number; day: number; time: number } | null {
+  const text = toText(value).trim()
+  const iso = ISO_DATE.exec(text)
+  if (iso) {
+    const [, y, m, d, hh = '0', mm = '0', ss = '0'] = iso
+    if (!isCalendarDay(+y, +m, +d) || +hh >= 24 || +mm >= 60 || +ss >= 60) return null
+    return { year: +y, month: +m, day: +d, time: Date.UTC(+y, +m - 1, +d, +hh, +mm, +ss) }
+  }
+  const slash = SLASH_DATE.exec(text)
+  if (slash) {
+    const [a, b, y] = [+slash[1], +slash[2], +slash[3]]
+    const [month, day] = isCalendarDay(y, a, b) ? [a, b] : isCalendarDay(y, b, a) ? [b, a] : [0, 0]
+    if (month === 0) return null
+    return { year: y, month, day, time: Date.UTC(y, month - 1, day) }
+  }
+  return null
+}
+
 function isCalendarDay(year: number, month: number, day: number): boolean {
   if (month < 1 || month > 12 || day < 1) return false
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate()

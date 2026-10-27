@@ -10,6 +10,7 @@ const API_ROUTES = {
   '/api/understand': { module: '/api/_lib/understand.ts', handler: 'handleUnderstand' },
   '/api/relationships': { module: '/api/_lib/relationships.ts', handler: 'handleRelationships' },
   '/api/generate': { module: '/api/_lib/generate.ts', handler: 'handleGenerate' },
+  '/api/ask': { module: '/api/_lib/ask.ts', handler: 'handleAsk' },
 } as const
 
 function apiDevMiddleware(): Plugin {

@@ -142,13 +142,13 @@ export function useRelationships(
 }
 
 /** Keeps the most recently opened copy of each dataset, in the order they were opened. */
-function latestVersions(datasets: readonly Dataset[]): Dataset[] {
+export function latestVersions(datasets: readonly Dataset[]): Dataset[] {
   const latest = new Map<string, Dataset>()
   for (const d of datasets) latest.set(d.datasetId, d)
   return datasets.filter((d) => latest.get(d.datasetId) === d)
 }
 
-function summarise(d: Dataset, resolved: ResolvedUnderstanding): DatasetSummary {
+export function summarise(d: Dataset, resolved: ResolvedUnderstanding): DatasetSummary {
   return {
     key: d.datasetId,
     fileName: d.fileName,

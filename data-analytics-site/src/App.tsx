@@ -1,5 +1,6 @@
 import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import { Menu } from 'lucide-react'
+import { AskPage } from './components/ask/AskPage'
 import { CsvPreview } from './components/CsvPreview'
 import { CsvUploader } from './components/CsvUploader'
 import { SampleGenerator } from './components/generate/SampleGenerator'
@@ -9,6 +10,7 @@ import { Sidebar } from './components/Sidebar'
 import { ColumnDefinition } from './components/understanding/ColumnDefinition'
 import { UnderstandingPanel } from './components/understanding/UnderstandingPanel'
 import { Wordmark } from './components/Wordmark'
+import { useAsk } from './hooks/useAsk'
 import { useUnderstanding } from './hooks/useUnderstanding'
 import { toDataset, type Dataset, type View } from './lib/datasets'
 import { matchDataset, recordUpload, type MatchReason } from './lib/identity'
@@ -47,6 +49,7 @@ function notice(kind: Notice['kind'], message: string): Notice {
 function App() {
   const understanding = useUnderstanding()
   const [datasets, setDatasets] = useState<Dataset[]>([])
+  const ask = useAsk(datasets, understanding.resolve)
   const [view, setView] = useState<View>({ kind: 'home' })
   const [datasetsOpen, setDatasetsOpen] = useState(true)
 
@@ -220,6 +223,20 @@ function App() {
                     onGenerated={(data) => handleUpload([data], [])}
                   />
                 </div>
+              </>
+            )}
+
+            {view.kind === 'ask' && (
+              <>
+                <PageHeader
+                  title="Ask your data"
+                  subtitle="Ask a question in plain English. Claude plans the answer; your browser works it out from every row."
+                />
+                <AskPage
+                  datasets={datasets}
+                  nameOf={(d) => understanding.resolve(d).name.value ?? d.fileName}
+                  ask={ask}
+                />
               </>
             )}
 
