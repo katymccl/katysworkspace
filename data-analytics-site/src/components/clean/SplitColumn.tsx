@@ -7,7 +7,9 @@ import {
   MAX_PARTS,
   countParts,
   defaultNames,
+  emptyParts,
   guessDelimiter,
+  keptNames,
   splitColumns,
   splitProblem,
   splitValue,
@@ -27,8 +29,8 @@ interface SplitColumnProps {
 }
 
 /**
- * "Split a column": pick a column and a separator, see how a few values split, name the new
- * columns, and add the split to the changes waiting to be applied.
+ * "Split a column": pick a column and a separator, see how a few values split, choose and name the
+ * new columns, and add the split to the changes waiting to be applied.
  */
 export function SplitColumn({ columns, rows, splits, onAdd, onRemove }: SplitColumnProps) {
   const ids = { column: useId(), delimiter: useId(), parts: useId() }
@@ -38,6 +40,7 @@ export function SplitColumn({ columns, rows, splits, onAdd, onRemove }: SplitCol
   const [custom, setCustom] = useState('')
   const [parts, setParts] = useState(2)
   const [names, setNames] = useState<string[]>([])
+  const [skip, setSkip] = useState<number[]>([])
   const [keepOriginal, setKeepOriginal] = useState(true)
 
   const delimiter = choice === CUSTOM ? custom : choice
@@ -48,6 +51,7 @@ export function SplitColumn({ columns, rows, splits, onAdd, onRemove }: SplitCol
     const n = Math.max(2, countParts(rows, nextColumn, nextDelimiter))
     setParts(n)
     setNames(defaultNames(nextColumn, n, taken))
+    setSkip(emptyParts(rows, nextColumn, nextDelimiter, n))
   }
 
   function chooseColumn(next: string) {
@@ -65,13 +69,20 @@ export function SplitColumn({ columns, rows, splits, onAdd, onRemove }: SplitCol
   function changeParts(n: number) {
     const count = Math.min(Math.max(n, 2), MAX_PARTS)
     setParts(count)
+    setSkip((current) => current.filter((i) => i < count))
     setNames((current) => {
       const extra = defaultNames(column, MAX_PARTS, [...taken, ...current])
       return Array.from({ length: count }, (_, i) => current[i] ?? extra[i - current.length])
     })
   }
 
-  const split: Split = { column, delimiter, names: names.map((n) => n.trim()), keepOriginal }
+  const split: Split = {
+    column,
+    delimiter,
+    names: names.map((n) => n.trim()),
+    keepOriginal,
+    skip,
+  }
   const problem = column ? splitProblem(columns, splits, split) : null
   const examples = column
     ? rows
@@ -92,6 +103,7 @@ export function SplitColumn({ columns, rows, splits, onAdd, onRemove }: SplitCol
         </h4>
         <p className="text-xs text-slate-500">
           Turn one column into several at a separator, e.g. “Leeds, UK” into a city and a country.
+          Untick any part you don’t need, e.g. to keep just the number from “-1234”.
         </p>
       </div>
 
@@ -104,7 +116,7 @@ export function SplitColumn({ columns, rows, splits, onAdd, onRemove }: SplitCol
             >
               <span>
                 Split <span className="font-medium">{s.column}</span> at{' '}
-                {delimiterName(s.delimiter)} into {s.names.join(', ')}
+                {delimiterName(s.delimiter)} into {keptNames(s).join(', ')}
                 {s.keepOriginal ? ' (keeping the original)' : ''}
               </span>
               <button
@@ -165,7 +177,7 @@ export function SplitColumn({ columns, rows, splits, onAdd, onRemove }: SplitCol
               />
             )}
             <label className="space-y-1 text-xs text-slate-600" htmlFor={ids.parts}>
-              <span className="block">Into</span>
+              <span className="block">Into parts</span>
               <input
                 id={ids.parts}
                 type="number"
@@ -195,18 +207,38 @@ export function SplitColumn({ columns, rows, splits, onAdd, onRemove }: SplitCol
             <thead className="bg-slate-50">
               <tr>
                 <th className="px-3 py-1.5 font-medium text-slate-500">{column}</th>
-                {names.map((name, i) => (
-                  <th key={i} className="px-2 py-1">
-                    <input
-                      value={name}
-                      onChange={(e) =>
-                        setNames((current) => current.map((n, j) => (j === i ? e.target.value : n)))
-                      }
-                      aria-label={`Name of new column ${i + 1}`}
-                      className={`${input} w-32 text-xs font-medium`}
-                    />
-                  </th>
-                ))}
+                {names.map((name, i) => {
+                  const kept = !skip.includes(i)
+                  return (
+                    <th key={i} className="px-2 py-1">
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="checkbox"
+                          checked={kept}
+                          onChange={() =>
+                            setSkip((current) =>
+                              kept ? [...current, i] : current.filter((j) => j !== i),
+                            )
+                          }
+                          aria-label={`Keep part ${i + 1}`}
+                          title={kept ? 'Leave this part out' : 'Keep this part'}
+                          className="h-3.5 w-3.5 accent-violet-600"
+                        />
+                        <input
+                          value={name}
+                          disabled={!kept}
+                          onChange={(e) =>
+                            setNames((current) =>
+                              current.map((n, j) => (j === i ? e.target.value : n)),
+                            )
+                          }
+                          aria-label={`Name of new column ${i + 1}`}
+                          className={`${input} w-32 text-xs font-medium disabled:bg-slate-50 disabled:text-slate-400 disabled:line-through`}
+                        />
+                      </div>
+                    </th>
+                  )
+                })}
               </tr>
             </thead>
             <tbody>
@@ -214,7 +246,10 @@ export function SplitColumn({ columns, rows, splits, onAdd, onRemove }: SplitCol
                 <tr key={r} className="border-t border-slate-100">
                   <td className="px-3 py-1.5 text-slate-500">{v}</td>
                   {splitValue(v, delimiter, parts).map((p, i) => (
-                    <td key={i} className="px-3 py-1.5 text-slate-800">
+                    <td
+                      key={i}
+                      className={`px-3 py-1.5 ${skip.includes(i) ? 'text-slate-300 line-through' : 'text-slate-800'}`}
+                    >
                       {p || <span className="italic text-slate-300">empty</span>}
                     </td>
                   ))}

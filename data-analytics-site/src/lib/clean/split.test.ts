@@ -3,6 +3,7 @@ import {
   applySplits,
   countParts,
   defaultNames,
+  emptyParts,
   guessDelimiter,
   splitColumns,
   splitProblem,
@@ -79,5 +80,20 @@ describe('splitting a dataset', () => {
     expect(splitProblem(columns, [], { ...split, names: ['city', ' '] })).toBe(
       'Give every new column a name.',
     )
+  })
+
+  it('keeps only the parts not skipped, e.g. the number from "-1234"', () => {
+    const codes = [{ code: '-1234' }, { code: '-5678' }, { code: '' }]
+    expect(emptyParts(codes, 'code', '-', 2)).toEqual([0])
+    expect(emptyParts(rows, 'id', ',', 2)).toEqual([1])
+    expect(emptyParts([{ code: 'abc' }], 'code', '-', 1)).toEqual([])
+
+    const number: Split = { column: 'code', delimiter: '-', names: ['code_1', 'number'], keepOriginal: false, skip: [0] }
+    expect(splitColumns(['code'], [number])).toEqual(['number'])
+    expect(applySplits(codes, [number])).toEqual([{ number: '1234' }, { number: '5678' }, { number: '' }])
+    expect(splitProblem(['code'], [], number)).toBeNull()
+    expect(splitProblem(['code'], [], { ...number, skip: [0, 1] })).toBe('Keep at least one of the new columns.')
+    // A skipped part's name doesn't have to be filled in or unique.
+    expect(splitProblem(['code'], [], { ...number, names: ['', 'number'] })).toBeNull()
   })
 })

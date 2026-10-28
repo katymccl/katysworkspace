@@ -24,6 +24,7 @@ import {
   type CleanContext,
 } from '../../lib/clean/request'
 import { CLEAN_LIMITS, type CleanSuggestions } from '../../lib/clean/schema'
+import { keptNames } from '../../lib/clean/split'
 import type { CsvRow } from '../../lib/parseCsv'
 import { isMissing } from '../../lib/profiling'
 import type { UnderstandingError } from '../../lib/understanding'
@@ -125,7 +126,7 @@ export function CleanPanel({ dataset, context, onApply, onClose }: CleanPanelPro
     const parts = [
       removedRows > 0 && `removed ${plural(removedRows, 'row')}`,
       changedValues > 0 && `changed ${plural(changedValues, 'value')}`,
-      ...edits.splits.map((s) => `split ${s.column} into ${s.names.join(', ')}`),
+      ...edits.splits.map((s) => `split ${s.column} into ${keptNames(s).join(', ')}`),
     ].filter(Boolean)
     await onApply(
       applyAll(columns, rows, issues, edits),

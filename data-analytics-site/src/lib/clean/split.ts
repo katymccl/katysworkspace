@@ -9,6 +9,13 @@ export interface Split {
   names: string[]
   /** Keep the original column next to the new ones, or replace it. */
   keepOriginal: boolean
+  /** Positions of parts to leave out, e.g. the empty part before "-" in "-1234". */
+  skip?: number[]
+}
+
+/** The names of the parts a split keeps, in order. */
+export function keptNames(split: Split): string[] {
+  return split.names.filter((_, i) => !split.skip?.includes(i))
 }
 
 /** Separators offered by name; anything else can be typed. */
@@ -67,6 +74,22 @@ export function guessDelimiter(rows: readonly CsvRow[], column: string): string 
   return best?.value ?? null
 }
 
+/** Positions of parts that are empty in every value, so are not worth a column ("-1234" at "-"). */
+export function emptyParts(
+  rows: readonly CsvRow[],
+  column: string,
+  delimiter: string,
+  parts: number,
+): number[] {
+  const filled = Array.from({ length: parts }, () => false)
+  for (const row of rows.slice(0, 1000)) {
+    splitValue(row[column], delimiter, parts).forEach((p, i) => p !== '' && (filled[i] = true))
+  }
+  const empty = filled.flatMap((f, i) => (f ? [] : [i]))
+  // When nothing splits at all, leave the choice to the user rather than skipping everything.
+  return empty.length === parts ? [] : empty
+}
+
 /** `city` → `city_1`, `city_2`…, skipping names already taken. */
 export function defaultNames(column: string, parts: number, taken: readonly string[]): string[] {
   const used = new Set(taken.map((n) => n.toLowerCase()))
@@ -88,13 +111,14 @@ export function splitColumns(columns: readonly string[], splits: readonly Split[
   return columns.flatMap((c) => {
     const split = bySource.get(c)
     if (!split) return [c]
-    return split.keepOriginal ? [c, ...split.names] : split.names
+    return split.keepOriginal ? [c, ...keptNames(split)] : keptNames(split)
   })
 }
 
 /**
- * Why a split can't be added, or null when it can: names must be filled in, different from each
- * other and from the columns that will remain, and a column is split once.
+ * Why a split can't be added, or null when it can: at least one part is kept, kept names are
+ * filled in, different from each other and from the columns that will remain, and a column is
+ * split once.
  */
 export function splitProblem(
   columns: readonly string[],
@@ -103,8 +127,9 @@ export function splitProblem(
 ): string | null {
   if (existing.some((s) => s.column === split.column)) return `${split.column} is already being split.`
   if (split.delimiter === '') return 'Choose what to split at.'
-  if (split.names.length < 2) return 'Split into at least 2 columns.'
-  const names = split.names.map((n) => n.trim())
+  if (split.names.length < 2) return 'Split into at least 2 parts.'
+  const names = keptNames(split).map((n) => n.trim())
+  if (names.length === 0) return 'Keep at least one of the new columns.'
   if (names.some((n) => n === '')) return 'Give every new column a name.'
   if (new Set(names.map((n) => n.toLowerCase())).size !== names.length) {
     return 'The new columns need different names.'
@@ -123,7 +148,9 @@ export function applySplits(rows: readonly CsvRow[], splits: readonly Split[]): 
     const next = { ...row }
     for (const s of splits) {
       const parts = splitValue(row[s.column], s.delimiter, s.names.length)
-      s.names.forEach((name, i) => (next[name] = parts[i]))
+      s.names.forEach((name, i) => {
+        if (!s.skip?.includes(i)) next[name] = parts[i]
+      })
       if (!s.keepOriginal) delete next[s.column]
     }
     return next
