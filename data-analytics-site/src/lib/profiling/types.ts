@@ -57,27 +57,25 @@ export interface ValueCount {
 }
 
 /**
- * Evidence that a column identifies or names records. Empty columns never get any.
+ * Why a column could be its file's primary key. Only integer and string columns where every row has
+ * a value and no two match get any; a key that repeats, such as a `Customer ID` in an orders file,
+ * points at another file's records and gets none.
  * - id-header: a header word is `id`, `ids`, `identifier`, `uuid` or `guid` (`Library ID`, `shop_id`)
  * - name-header: a header word is `name` or ends in it (`Name`, `first_name`, `username`)
  * - entity-name: the header is the thing an ID column identifies (`Library` beside `Library ID`)
  * - id-like-values: a string column whose every value is a code such as `L-IHL` or `SKU123`
- * - unique-values: every value present and different, in a `string` column of at least two rows or
- *   an `integer` column of at least 20 (smaller unique number columns are usually coincidences).
- *   Decimals, booleans and dates are left out since they are often unique by chance.
- * - mostly-unique: an `integer` or `string` column of at least 20 values where at least 90% are
- *   distinct but some repeat, like an ID column with a few duplicates
- * - paired-values: values repeat in step with another column's, in both directions for at least 90%
- *   of rows (`Library ID` and `Library`), checked on the first 10,000 rows
+ * - sequential-values: whole numbers that count up through the file, like `1001, 1002, 1003`
+ * - unique-values: every value present and different; always the last reason. Without the header,
+ *   code or entity reasons it needs at least 20 values: text that is not mostly sentences, or
+ *   whole numbers that count up. Small files, comments and measures are often unique by chance.
  */
 export type IdentifierReason =
   | { kind: 'id-header' }
   | { kind: 'name-header' }
   | { kind: 'entity-name'; idColumn: string }
   | { kind: 'id-like-values' }
+  | { kind: 'sequential-values' }
   | { kind: 'unique-values' }
-  | { kind: 'mostly-unique'; repeatedValueCount: number }
-  | { kind: 'paired-values'; withColumn: string }
 
 export interface ColumnProfile {
   name: string
@@ -100,7 +98,7 @@ export interface ColumnProfile {
   isUnique: boolean
   /** True when there is at least one identifier reason. */
   isPotentialIdentifier: boolean
-  /** Why the column looks like an identifier (an ID, a code or a name), in a fixed order. */
+  /** Why the column could be the file's primary key, in a fixed order. */
   identifierReasons: IdentifierReason[]
   /**
    * True when the user said this column is not an identifier although it has reasons; then

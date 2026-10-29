@@ -1,4 +1,4 @@
-import type { DatasetProfile } from '../profiling'
+import { isKeyColumn, type DatasetProfile } from '../profiling'
 
 /**
  * A few starter questions built from a dataset's columns, so a blank box isn't the only way in:
@@ -15,13 +15,13 @@ export function suggestQuestions(
     const category = cols.find(
       (c) =>
         (c.inferredType === 'string' || c.inferredType === 'boolean') &&
-        !c.isPotentialIdentifier &&
+        !isKeyColumn(c) &&
         c.distinctCount >= 2 &&
         c.distinctCount <= 30,
     )
     const measure = cols.find(
       (c) =>
-        (c.inferredType === 'decimal' || c.inferredType === 'integer') && !c.isPotentialIdentifier,
+        (c.inferredType === 'decimal' || c.inferredType === 'integer') && !isKeyColumn(c),
     )
     if (category) out.push(`How many rows in ${name} are there for each ${category.name}?`)
     if (measure && category) out.push(`What is the total ${measure.name} by ${category.name}?`)

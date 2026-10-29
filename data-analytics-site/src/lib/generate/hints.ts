@@ -1,5 +1,5 @@
 import type { DatasetProfile } from '../profiling'
-import { headerWords, idEntity } from '../profiling/identifiers'
+import { headerWords, idEntity, isKeyColumn } from '../profiling/identifiers'
 
 /** Example text for the generator's empty fields, made from the base dataset's own columns. */
 export interface BaseHints {
@@ -38,7 +38,7 @@ function referencedThing(profile: DatasetProfile): { column: string; entity: str
   const label = usable.find(
     (c) =>
       c.inferredType === 'string' &&
-      !c.isPotentialIdentifier &&
+      !isKeyColumn(c) &&
       c.distinctCount >= 2 &&
       c.distinctCount <= c.nonMissingCount / 2,
   )

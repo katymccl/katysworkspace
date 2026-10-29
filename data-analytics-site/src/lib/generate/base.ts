@@ -1,5 +1,6 @@
 import type { CsvData } from '../parseCsv'
 import type { DatasetProfile } from '../profiling'
+import { entityNameColumns, isKeyColumn } from '../profiling/identifiers'
 import { isMissing } from '../profiling/values'
 import { normaliseValue } from '../relationships/detect'
 import type { ColumnRole } from '../understanding/schema'
@@ -30,9 +31,11 @@ export function buildBaseContext(base: BaseSource): BaseContext {
     s.length > max ? s.slice(0, max) : s
   const text = (v: unknown) => (isMissing(v) ? '' : clip(String(v)))
 
+  // Names that go with an ID column (`Library` beside `Library ID`) travel with their IDs.
+  const idNames = entityNameColumns(base.profile.columns.map((c) => c.name))
   const keyColumns = base.profile.columns
     .map((c) => ({ c, role: base.columnDefinitions.get(c.name)?.role ?? null }))
-    .filter(({ c, role }) => c.isPotentialIdentifier || KEY_ROLE_ORDER.includes(role))
+    .filter(({ c, role }) => isKeyColumn(c) || idNames.has(c.name) || KEY_ROLE_ORDER.includes(role))
     .filter(({ c }) => c.inferredType !== 'empty' && c.inferredType !== 'boolean')
     .sort(
       (a, b) => rank(a.c.isPotentialIdentifier, a.role) - rank(b.c.isPotentialIdentifier, b.role),

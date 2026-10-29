@@ -1,5 +1,4 @@
 import type { ColumnProfile, IdentifierReason } from '../../lib/profiling'
-import { plural } from './format'
 
 export function describeReason(reason: IdentifierReason): string {
   switch (reason.kind) {
@@ -11,12 +10,10 @@ export function describeReason(reason: IdentifierReason): string {
       return `Names what "${reason.idColumn}" identifies`
     case 'id-like-values':
       return 'Values look like codes'
+    case 'sequential-values':
+      return 'Numbers count up in order'
     case 'unique-values':
       return 'Every value is present and unique'
-    case 'mostly-unique':
-      return `Almost every value is unique (${plural(reason.repeatedValueCount, 'value')} ${reason.repeatedValueCount === 1 ? 'repeats' : 'repeat'})`
-    case 'paired-values':
-      return `Repeats in step with "${reason.withColumn}"`
   }
 }
 

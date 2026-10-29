@@ -1,11 +1,12 @@
 import type { CsvRow } from '../parseCsv'
 import type { DatasetProfile, ValueKind } from '../profiling'
 import { classifyValue, isMissing } from '../profiling'
+import { describeDates, isProfiledDate, type DateColumnFacts } from './dates'
 
 /**
  * Finds what "Prepare my data" offers to fix, exactly and in the browser: missing values, rows that
- * repeat an earlier row, and values that don't fit their column's type. Pure; rows are referred
- * to by their index in the dataset.
+ * repeat an earlier row, values that don't fit their column's type, and date columns written in
+ * several formats. Pure; rows are referred to by their index in the dataset.
  */
 
 export interface MissingIssue {
@@ -30,10 +31,17 @@ export interface MismatchIssue {
 /** What a column's values should be. Whole and decimal numbers are treated as one kind. */
 export type ExpectedKind = 'number' | 'date' | 'boolean'
 
+/** A column of dates written several ways, or in a way sema doesn't read as a date. */
+export interface DateFormatIssue extends DateColumnFacts {
+  column: string
+}
+
 export interface CleanIssues {
   missing: MissingIssue[]
   duplicates: DuplicateGroup[]
+  /** Values of the wrong kind, except in date-format columns, which list theirs as unreadable. */
   mismatches: MismatchIssue[]
+  dateFormats: DateFormatIssue[]
 }
 
 /** A mostly-typed column must have at least this share of one kind for the rest to look wrong. */
@@ -73,13 +81,42 @@ export function findIssues(
     else groups.set(first, [...(groups.get(first) ?? []), index])
   })
 
+  const dateFormats = findDateFormats(columns, rows)
+  const dateColumns = new Set(dateFormats.map((d) => d.column))
   return {
     missing: columns
       .map((column) => ({ column, rows: missing.get(column)! }))
       .filter((m) => m.rows.length > 0),
     duplicates: [...groups].map(([keep, copies]) => ({ keep, copies })),
-    mismatches,
+    mismatches: mismatches.filter((m) => !dateColumns.has(m.column)),
+    dateFormats,
   }
+}
+
+/**
+ * Columns where at least 80% of values are dates, written either more than one way (`2024-01-03`,
+ * `Jan 5 2024`, `6/1/2024`) or only in ways the profiler doesn't read as dates.
+ */
+export function findDateFormats(
+  columns: readonly string[],
+  rows: readonly CsvRow[],
+): DateFormatIssue[] {
+  const found: DateFormatIssue[] = []
+  for (const column of columns) {
+    const values: [number, string][] = []
+    rows.forEach((row, index) => {
+      const value = row[column]
+      if (!isMissing(value)) values.push([index, value])
+    })
+    if (values.length < 2) continue
+    const facts = describeDates(values)
+    if (facts.readable / values.length < DOMINANT_SHARE) continue
+    const mixed = facts.formats.length > 1
+    if (mixed || !facts.formats.every((f) => isProfiledDate(f.example))) {
+      found.push({ column, ...facts })
+    }
+  }
+  return found
 }
 
 /**
@@ -126,6 +163,7 @@ export function issueCount(issues: CleanIssues): number {
   return (
     issues.missing.reduce((n, m) => n + m.rows.length, 0) +
     issues.duplicates.reduce((n, d) => n + d.copies.length, 0) +
-    issues.mismatches.length
+    issues.mismatches.length +
+    issues.dateFormats.length
   )
 }

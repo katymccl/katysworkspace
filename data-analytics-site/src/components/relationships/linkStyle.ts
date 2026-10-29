@@ -58,6 +58,18 @@ export const CONFIDENCE_LABELS: Record<Confidence, string> = {
   rejected: '✕: marked not related (only shown with hidden links)',
 }
 
+/** Which ends of a link get an arrowhead: the side (or sides) where each value appears once. */
+export type ArrowHeads = 'end' | 'both' | 'none'
+
+/**
+ * Heads for a link drawn from its "many" side to its "one" side. Only many → one has a direction;
+ * one ↔ one points both ways and many ↔ many neither, so the order datasets were loaded in never
+ * changes the picture. Links without a known cardinality (AI or drawn) get none.
+ */
+export function arrowHeads(cardinality: Cardinality | null): ArrowHeads {
+  return cardinality === 'many-to-one' ? 'end' : cardinality === 'one-to-one' ? 'both' : 'none'
+}
+
 export function cardinalityLabel(c: Cardinality): string {
   return c === 'many-to-one' ? 'many → one' : c === 'one-to-one' ? 'one ↔ one' : 'many ↔ many'
 }

@@ -9,7 +9,13 @@ import type {
   ValueCount,
   ValueKind,
 } from './types'
-import { columnIdentifierReasons, looksLikeIdValue, withCrossColumnReasons } from './identifiers'
+import {
+  columnIdentifierReasons,
+  entityNameColumns,
+  looksLikeIdValue,
+  looksLikeProse,
+  looksLikeSequence,
+} from './identifiers'
 import {
   classifyValue,
   DEFAULT_MISSING_TOKENS,
@@ -40,15 +46,14 @@ export function profileDataset(input: ProfileInput, options: ProfileOptions = {}
     missingTokens: missingTokenSet(options.missingTokens ?? DEFAULT_MISSING_TOKENS),
   }
   const { columns, rows } = input
+  const entityOf = entityNameColumns(columns)
 
   return {
     rowCount: rows.length,
     columnCount: columns.length,
     malformedRowCount: rows.filter((row) => isMalformed(row, columns)).length,
-    columns: withCrossColumnReasons(
-      columns.map((name, index) => profileColumn(name, index, rows, settings)),
-      rows,
-      settings.missingTokens,
+    columns: columns.map((name, index) =>
+      profileColumn(name, index, rows, settings, entityOf.get(name) ?? null),
     ),
   }
 }
@@ -68,6 +73,7 @@ function profileColumn(
   index: number,
   rows: readonly RawRow[],
   settings: Settings,
+  entityOf: string | null,
 ): ColumnProfile {
   const kindCounts: Record<ValueKind, number> = {
     integer: 0,
@@ -108,6 +114,8 @@ function profileColumn(
   const distinctCount = valueCounts.size
   const inferredType = inferType(kindCounts)
   const isUnique = nonMissingCount > 0 && distinctCount === nonMissingCount
+  // Code and prose checks run per distinct value, and only where a key is still possible.
+  const keyText = inferredType === 'string' && isUnique ? [...valueCounts.keys()] : []
   const identifierReasons = columnIdentifierReasons({
     name,
     inferredType,
@@ -115,10 +123,10 @@ function profileColumn(
     nonMissingCount,
     isUnique,
     distinctCount,
-    uniquenessRatio: ratio(distinctCount, nonMissingCount),
-    repeatedValueCount: countRepeated(valueCounts),
-    // Checked per distinct value, and only where the code-like-values reason can apply.
-    allValuesIdLike: inferredType === 'string' && [...valueCounts.keys()].every(looksLikeIdValue),
+    allValuesIdLike: keyText.length > 0 && keyText.every(looksLikeIdValue),
+    mostlyProse: keyText.filter(looksLikeProse).length > keyText.length / 2,
+    sequential: inferredType === 'integer' && isUnique && looksLikeSequence(numbers),
+    entityOf,
   })
 
   return {
@@ -197,8 +205,3 @@ function ratio(part: number, whole: number): number {
   return whole === 0 ? 0 : part / whole
 }
 
-function countRepeated(counts: ReadonlyMap<string, number>): number {
-  let repeated = 0
-  for (const count of counts.values()) if (count > 1) repeated++
-  return repeated
-}

@@ -1,4 +1,5 @@
 import type { CsvRow } from '../parseCsv'
+import { standardiseDate, type DayMonthOrder } from './dates'
 import type { CleanIssues } from './detect'
 import { applySplits, splitColumns, type Split } from './split'
 
@@ -17,6 +18,8 @@ export interface CleanEdits {
   /** New cell values by `cellKey(row, column)`. */
   cells: Record<string, string>
   replacements: Replacement[]
+  /** Date columns to rewrite as `YYYY-MM-DD`, reading `01/04/2024`-style values in this order. */
+  dates: { column: string; order: DayMonthOrder }[]
   /** Columns to split into new ones; applied after every other change. */
   splits: Split[]
 }
@@ -26,6 +29,7 @@ export const NO_EDITS: CleanEdits = {
   removeRows: [],
   cells: {},
   replacements: [],
+  dates: [],
   splits: [],
 }
 
@@ -56,8 +60,9 @@ export function toggleRemoved(edits: CleanEdits, rows: readonly number[]): Clean
 }
 
 /**
- * The rows with the user's choices applied: replacements first, then cell edits (which win), then
- * removed rows left out. Rows are copied; the input is never changed. Pure.
+ * The rows with the user's choices applied: replacements first, then cell edits, then dates
+ * rewritten (so a date typed into a cell is standardised too), then removed rows left out. Rows
+ * are copied; the input is never changed. Pure.
  */
 export function applyEdits(
   rows: readonly CsvRow[],
@@ -87,6 +92,10 @@ export function applyEdits(
       if (from.has((next[column] ?? '').trim())) next[column] = to
     }
     for (const [column, value] of cellsByRow.get(index) ?? []) next[column] = value
+    for (const { column, order } of edits.dates) {
+      const date = next[column] === undefined ? null : standardiseDate(next[column], order)
+      if (date !== null) next[column] = date
+    }
     out.push(next)
   })
   return out

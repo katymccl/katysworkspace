@@ -25,8 +25,13 @@ export interface DatasetRecord {
 }
 
 export type MatchReason =
-  /** The exact same bytes were uploaded before, possibly under another name. */
+  /** The exact same bytes were uploaded before under this name. */
   | 'same-content'
+  /**
+   * The exact same bytes were uploaded before under another name: a separate dataset, which starts
+   * from the earlier one's saved descriptions (`copyOf`).
+   */
+  | 'copy'
   /** Same file name and columns, different contents: a new version of the dataset. */
   | 'new-version'
   /** Nothing matched, so this is a new dataset. */
@@ -36,6 +41,8 @@ export interface DatasetIdentity {
   datasetId: string
   fingerprints: DatasetFingerprints
   matchedBy: MatchReason
+  /** For a copy: the dataset with the same contents, whose saved descriptions it starts from. */
+  copyOf?: string
 }
 
 export const MAX_VERSIONS_REMEMBERED = 20
@@ -60,10 +67,12 @@ export function contentFingerprint(bytes: BufferSource): Promise<string> {
 }
 
 /**
- * Finds which known dataset an upload belongs to. Exact content wins over everything (newest
- * record first); otherwise the same file name and schema mean a new version. A matching schema
- * under a different name is treated as a different dataset, since recurring exports often share
- * columns while being distinct datasets.
+ * Finds which known dataset an upload belongs to (newest record first). The file name decides:
+ * under a name the dataset was uploaded with, the exact same content is that dataset again, and
+ * the same columns with new content are a new version. Under any other name it's a different
+ * dataset, even with identical content (two files the user wants side by side), recorded as a
+ * copy so it can start from the original's saved descriptions. A matching schema under another
+ * name is a different dataset too, since recurring exports often share columns.
  */
 export function matchDataset(
   known: readonly DatasetRecord[],
@@ -71,8 +80,10 @@ export function matchDataset(
   newId: () => string,
 ): DatasetIdentity {
   const byRecency = [...known].sort((a, b) => (a.lastSeenAt < b.lastSeenAt ? 1 : -1))
-  const sameContent = byRecency.find((r) =>
-    r.contentFingerprints.includes(upload.fingerprints.content),
+  const hasContent = (r: DatasetRecord) =>
+    r.contentFingerprints.includes(upload.fingerprints.content)
+  const sameContent = byRecency.find(
+    (r) => hasContent(r) && r.fileNames.includes(upload.fileName),
   )
   if (sameContent) {
     return {
@@ -90,6 +101,15 @@ export function matchDataset(
       datasetId: sameSchemaAndName.datasetId,
       fingerprints: upload.fingerprints,
       matchedBy: 'new-version',
+    }
+  }
+  const original = byRecency.find(hasContent)
+  if (original) {
+    return {
+      datasetId: newId(),
+      fingerprints: upload.fingerprints,
+      matchedBy: 'copy',
+      copyOf: original.datasetId,
     }
   }
   return { datasetId: newId(), fingerprints: upload.fingerprints, matchedBy: 'new-dataset' }

@@ -3,6 +3,7 @@ export { requestUnderstanding, type UnderstandingOutcome } from './client'
 export * from './definitions'
 export * from './schema'
 export {
+  copySavedUnderstanding,
   loadConfirmed,
   loadDismissedIdentifiers,
   loadRegistry,

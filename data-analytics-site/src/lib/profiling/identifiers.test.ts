@@ -4,8 +4,10 @@ import {
   idEntity,
   isIdHeader,
   isNameHeader,
+  isKeyColumn,
   looksLikeIdValue,
-  pairConsistency,
+  looksLikeProse,
+  looksLikeSequence,
 } from './identifiers'
 import { profileDataset } from './profile'
 import type { ProfileInput } from './types'
@@ -102,83 +104,85 @@ describe('looksLikeIdValue', () => {
   })
 })
 
-describe('potential identifiers in a profile', () => {
+describe('primary keys in a profile', () => {
   const reasonsOf = (input: ProfileInput) =>
     Object.fromEntries(
       profileDataset(input).columns.map((c) => [c.name, c.identifierReasons.map((r) => r.kind)]),
     )
+  const rowsOf = (columns: string[], cells: string[][]) =>
+    cells.map((row) => Object.fromEntries(columns.map((c, i) => [c, row[i]])))
 
-  it('finds the ID and name columns in a long-format file where neither is unique', () => {
+  it('stars nothing in a long-format file where the ID and name repeat', () => {
     // Mirrors BookshopLibraries.csv: one row per library per staff type.
-    const columns = [
-      'Staff Type',
-      'Number of Staff',
-      'Library',
-      'Library ID',
-      'Consortium Member',
-      'Private',
-    ]
-    const rows = [
-      ['Librarians', '53', 'Idle Hour Library', 'L-IHL', 'Yes', 'No'],
-      ['Librarians', '4', "The Bibliophile's Shelves", 'L-BS', 'Yes', 'Yes'],
-      ['Library Assistants', '16', 'Idle Hour Library', 'L-IHL', 'Yes', 'No'],
-      ['Library Assistants', '6', 'Bide Awhile', 'L-BA', 'Yes', 'No'],
-      ['Library Technicians', '61', 'Idle Hour Library', 'L-IHL', 'Yes', 'No'],
-    ].map((cells) => Object.fromEntries(columns.map((c, i) => [c, cells[i]])))
-
-    expect(reasonsOf({ columns, rows })).toEqual({
-      'Staff Type': [],
-      'Number of Staff': [],
-      Library: ['entity-name', 'paired-values'],
-      'Library ID': ['id-header', 'id-like-values', 'paired-values'],
-      'Consortium Member': [],
-      Private: [],
-    })
-    const library = profileDataset({ columns, rows }).columns[2]
-    expect(library.identifierReasons).toEqual([
-      { kind: 'entity-name', idColumn: 'Library ID' },
-      { kind: 'paired-values', withColumn: 'Library ID' },
+    const columns = ['Staff Type', 'Number of Staff', 'Library', 'Library ID']
+    const rows = rowsOf(columns, [
+      ['Librarians', '53', 'Idle Hour Library', 'L-IHL'],
+      ['Librarians', '4', "The Bibliophile's Shelves", 'L-BS'],
+      ['Library Assistants', '16', 'Idle Hour Library', 'L-IHL'],
+      ['Library Technicians', '61', 'Idle Hour Library', 'L-IHL'],
     ])
+    const profile = profileDataset({ columns, rows })
+    expect(profile.columns.some((c) => c.isPotentialIdentifier)).toBe(false)
+    expect(profile.columns.filter(isKeyColumn).map((c) => c.name)).toEqual(['Library ID'])
   })
 
-  it('flags ID and name headers even when values repeat or are numeric', () => {
-    const columns = ['customerId', 'Customer Name', 'amount']
-    const rows = [
-      { customerId: '7', 'Customer Name': 'Ada', amount: '5' },
-      { customerId: '7', 'Customer Name': 'Ada', amount: '5' },
-    ]
+  it('stars a unique ID and the name beside it, even in a short file', () => {
+    const columns = ['Library ID', 'Library', 'City']
+    const rows = rowsOf(columns, [
+      ['L-IHL', 'Idle Hour Library', 'Leeds'],
+      ['L-BS', "The Bibliophile's Shelves", 'York'],
+      ['L-BA', 'Bide Awhile', 'Hull'],
+    ])
     expect(reasonsOf({ columns, rows })).toEqual({
-      customerId: ['id-header'],
-      'Customer Name': ['name-header'],
-      amount: [],
+      'Library ID': ['id-header', 'id-like-values', 'unique-values'],
+      Library: ['entity-name', 'unique-values'],
+      City: [],
+    })
+    expect(profileDataset({ columns, rows }).columns[1].identifierReasons[0]).toEqual({
+      kind: 'entity-name',
+      idColumn: 'Library ID',
     })
   })
 
-  it('matches entity names across header styles', () => {
-    const columns = ['CustomerID', 'customer', 'product']
-    const rows = [
-      { CustomerID: '1', customer: 'Ada', product: 'Pen' },
-      { CustomerID: '1', customer: 'Ada', product: 'Pen' },
-    ]
-    expect(reasonsOf({ columns, rows })).toMatchObject({ customer: ['entity-name'], product: [] })
+  it('does not star ID or name headers whose values repeat, but treats the ID as a key', () => {
+    const columns = ['customerId', 'Customer Name', 'amount']
+    const rows = rowsOf(columns, [
+      ['7', 'Ada', '5'],
+      ['7', 'Ada', '5'],
+      ['8', 'Grace', '6'],
+    ])
+    const profile = profileDataset({ columns, rows })
+    expect(reasonsOf({ columns, rows })).toEqual({ customerId: [], 'Customer Name': [], amount: [] })
+    expect(profile.columns.map(isKeyColumn)).toEqual([true, false, false])
   })
 
-  it('never flags an empty column, whatever its header', () => {
+  it('stars a unique name column', () => {
+    const columns = ['first_name']
+    const rows = rowsOf(columns, [['Ada'], ['Grace'], ['Alan']])
+    expect(reasonsOf({ columns, rows }).first_name).toEqual(['name-header', 'unique-values'])
+  })
+
+  it('needs every row to have a value', () => {
+    const columns = ['id']
+    expect(reasonsOf({ columns, rows: rowsOf(columns, [['a1'], [''], ['a2']]) }).id).toEqual([])
+  })
+
+  it('does not star codes that repeat', () => {
+    const columns = ['status']
+    const rows = rowsOf(columns, [['A-1'], ['B-2'], ['A-1'], ['C-3']])
+    expect(reasonsOf({ columns, rows }).status).toEqual([])
+  })
+
+  it('never stars an empty column, whatever its header', () => {
     const columns = ['id', 'name', 'Library', 'Library ID']
     const rows = [{ id: '', name: '', Library: '', 'Library ID': '' }]
     expect(profileDataset({ columns, rows }).columns.some((c) => c.isPotentialIdentifier)).toBe(
       false,
     )
   })
-
-  it('needs at least two distinct codes before trusting code-like values', () => {
-    const columns = ['status']
-    const rows = [{ status: 'N/A-1' }, { status: 'N/A-1' }]
-    expect(reasonsOf({ columns, rows }).status).toEqual([])
-  })
 })
 
-describe('identifiers from uniqueness', () => {
+describe('primary keys from uniqueness alone', () => {
   const kinds = (input: ProfileInput, name: string) =>
     profileDataset(input)
       .columns.find((c) => c.name === name)!
@@ -189,20 +193,32 @@ describe('identifiers from uniqueness', () => {
   })
   const range = (n: number) => Array.from({ length: n }, (_, i) => String(i + 1))
 
-  it('trusts unique whole numbers only with enough values', () => {
-    expect(kinds(single('n', range(20)), 'n')).toEqual(['unique-values'])
+  it('trusts unique whole numbers and text only with enough values', () => {
+    expect(kinds(single('n', range(20)), 'n')).toEqual(['sequential-values', 'unique-values'])
     expect(kinds(single('n', range(19)), 'n')).toEqual([])
+    const cities = range(20).map((v) => `City ${v}`)
+    expect(kinds(single('city', cities), 'city')).toEqual(['unique-values'])
+    expect(kinds(single('city', cities.slice(0, 19)), 'city')).toEqual([])
   })
 
-  it('flags mostly-unique columns and counts the repeated values', () => {
-    const values = [...range(18), '1', '2'] // 20 values, 18 distinct: 90%
-    const column = profileDataset(single('ref', values)).columns[0]
-    expect(column.identifierReasons).toEqual([{ kind: 'mostly-unique', repeatedValueCount: 2 }])
+  it('does not star unique whole numbers that do not count up', () => {
+    // Amounts that happen not to repeat: out of order and spread out.
+    const amounts = range(25).map((v) => String((Number(v) * 389) % 997))
+    expect(kinds(single('amount', amounts), 'amount')).toEqual([])
   })
 
-  it('does not flag columns below 90% unique or with too few values', () => {
-    expect(kinds(single('ref', [...range(17), '1', '2', '3']), 'ref')).toEqual([]) // 85%
-    expect(kinds(single('ref', [...range(9), '1']), 'ref')).toEqual([]) // only 10 values
+  it('still stars unique whole numbers with an ID header, in any order', () => {
+    const ids = range(5).map((v) => String((Number(v) * 389) % 997))
+    expect(kinds(single('Customer ID', ids), 'Customer ID')).toEqual(['id-header', 'unique-values'])
+  })
+
+  it('does not star a column that is almost unique', () => {
+    expect(kinds(single('ref', [...range(19), '1']), 'ref')).toEqual([])
+  })
+
+  it('does not star free text that happens to be unique', () => {
+    const comments = range(25).map((v) => `Order ${v} arrived a little late`)
+    expect(kinds(single('comment', comments), 'comment')).toEqual([])
   })
 
   it('ignores decimals however unique they are', () => {
@@ -211,74 +227,37 @@ describe('identifiers from uniqueness', () => {
   })
 })
 
-describe('identifiers from repeated values', () => {
-  const regions: [string, string][] = [
-    ['WST', 'West'],
-    ['EST', 'East'],
-    ['NTH', 'North'],
-    ['STH', 'South'],
-  ]
-  const sizes = ['small', 'large', 'medium']
-
-  /** 24 rows where code and name always travel together and size varies independently. */
-  function input(overrides: Record<number, Record<string, string>> = {}): ProfileInput {
-    const rows = Array.from({ length: 24 }, (_, i) => ({
-      code: regions[i % 4][0],
-      region: regions[i % 4][1],
-      size: sizes[i % 3],
-      ...overrides[i],
-    }))
-    return { columns: ['code', 'region', 'size'], rows }
-  }
-  const reasons = (data: ProfileInput) =>
-    profileDataset(data).columns.map((c) => c.identifierReasons)
-
-  it('pairs columns that repeat in step, naming the partner', () => {
-    const [code, region, size] = reasons(input())
-    expect(code).toContainEqual({ kind: 'paired-values', withColumn: 'region' })
-    expect(region).toContainEqual({ kind: 'paired-values', withColumn: 'code' })
-    expect(size).toEqual([])
-  })
-
-  it('tolerates an occasional typo', () => {
-    const [, region] = reasons(input({ 0: { region: 'West YYY' } }))
-    expect(region).toContainEqual({ kind: 'paired-values', withColumn: 'code' })
-  })
-
-  it('stops pairing when the columns disagree too often', () => {
-    const typos = { 0: { region: 'x1' }, 1: { region: 'x2' }, 2: { region: 'x3' } }
-    expect(reasons(input(typos))[1]).not.toContainEqual(
-      expect.objectContaining({ kind: 'paired-values' }),
-    )
-  })
-
-  it('never pairs columns that barely repeat', () => {
-    // A unique column agrees with anything, so it must not count as moving in step.
-    const columns = ['id', 'region']
-    const rows = Array.from({ length: 8 }, (_, i) => ({ id: `r${i}`, region: regions[i % 4][1] }))
-    const [id] = reasons({ columns, rows })
-    expect(id).not.toContainEqual(expect.objectContaining({ kind: 'paired-values' }))
+describe('looksLikeProse', () => {
+  it.each([
+    ['Arrived late but the box was fine', true],
+    ['Ada Lovelace', false],
+    ["The Bibliophile's Shelves", false],
+  ])('%j → %j', (text, prose) => {
+    expect(looksLikeProse(text)).toBe(prose)
   })
 })
 
-describe('pairConsistency', () => {
-  const codes = (...values: number[]) => Int32Array.from(values)
-
-  it('is 1 for columns that always move together', () => {
-    expect(pairConsistency(codes(0, 1, 0, 1, 2, 2), codes(5, 6, 5, 6, 7, 7))).toBe(1)
+describe('looksLikeSequence', () => {
+  it.each([
+    [[1001, 1002, 1003, 1004], true],
+    [[1, 2, 4, 5, 7, 8], true],
+    [[1, 2, 3, 5, 4, 6, 7, 8, 9, 10, 11], true],
+    [[5, 3, 9, 1, 7], false],
+    [[10, 200, 3000, 40000], false],
+    [[7], false],
+  ])('%j → %j', (numbers, sequence) => {
+    expect(looksLikeSequence(numbers)).toBe(sequence)
   })
+})
 
-  it('takes the weaker direction', () => {
-    // a → b is perfect, but b value 5 belongs to two different a values.
-    expect(pairConsistency(codes(0, 0, 1, 1, 2, 2), codes(5, 5, 5, 5, 6, 6))).toBeCloseTo(4 / 6)
-  })
-
-  it('skips rows where either side is missing', () => {
-    expect(pairConsistency(codes(0, 0, -1, 1, 1, 2, 2), codes(5, 5, 9, 6, 6, 7, 7))).toBe(1)
-  })
-
-  it('is 0 when one side does not repeat', () => {
-    expect(pairConsistency(codes(0, 1, 2, 3), codes(5, 5, 6, 6))).toBe(0)
+describe('isKeyColumn', () => {
+  it('drops a starred column the user said is not an identifier', () => {
+    const rows = [{ 'Order ID': '1' }, { 'Order ID': '2' }]
+    const column = profileDataset({ columns: ['Order ID'], rows }).columns[0]
+    expect(isKeyColumn(column)).toBe(true)
+    expect(isKeyColumn({ ...column, isPotentialIdentifier: false, identifierDismissed: true })).toBe(
+      false,
+    )
   })
 })
 
@@ -297,7 +276,7 @@ describe('identifiers across unrelated datasets', () => {
     ),
   })
 
-  it('e-commerce orders: order, customer and product keys, not measures or statuses', () => {
+  it('e-commerce orders: the order number, not repeated customers, products or statuses', () => {
     const customers = [
       'Ada Lovelace',
       'Grace Hopper',
@@ -319,21 +298,18 @@ describe('identifiers across unrelated datasets', () => {
         `2024-03-${String((i % 28) + 1).padStart(2, '0')}`,
       ],
     )
-    expect(starred(input)).toEqual({
-      OrderNumber: ['unique-values'],
-      customer_name: ['name-header'],
-      'Product SKU': ['id-like-values'],
-    })
+    // Customer names and SKUs repeat across orders, so only the order number is this file's key.
+    expect(starred(input)).toEqual({ OrderNumber: ['sequential-values', 'unique-values'] })
   })
 
-  it('sensor readings: device codes, not timestamps or readings', () => {
+  it('sensor readings: repeated device codes are not a key', () => {
     const input = table(['device', 'recorded', 'temperature_c', 'ok'], 40, (i) => [
       `dev-${i % 4}`,
       `2024-05-01T${String(i % 24).padStart(2, '0')}:00`,
       (20 + (i % 9) * 0.37).toFixed(2),
       i % 5 ? 'true' : 'false',
     ])
-    expect(starred(input)).toEqual({ device: ['id-like-values'] })
+    expect(starred(input)).toEqual({})
   })
 
   it('a survey with no identifier columns stars nothing', () => {

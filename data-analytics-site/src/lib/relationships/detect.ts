@@ -3,11 +3,20 @@
  * independent of React and AI: the same datasets always give the same candidates, in the same order.
  *
  * Two kinds of evidence:
- * - key links: a column in one dataset whose values reappear in a column of another
- *   (e.g. Staff."Library ID" values all exist in Libraries."Library ID")
+ * - key links: an ID or name column in one dataset whose values reappear in one of another
+ *   (e.g. Staff."Library ID" values all exist in Libraries."Library ID"). Quantities, amounts and
+ *   categories are never compared, since they share values by coincidence.
  * - similar structure: two datasets that share most of their column names (e.g. monthly exports)
  */
-import { headerWords, idEntity, isIdHeader } from '../profiling/identifiers'
+import {
+  entityNameColumns,
+  headerWords,
+  idEntity,
+  isIdHeader,
+  isKeyColumn,
+  isNameHeader,
+  looksLikeIdValue,
+} from '../profiling/identifiers'
 import type { ColumnProfile, DatasetProfile, RawRow } from '../profiling/types'
 import { classifyValue, isMissing } from '../profiling/values'
 
@@ -67,7 +76,6 @@ export const MAX_DISTINCT_PER_COLUMN = 100_000
 const MIN_SHARED = 2
 const MIN_COVERAGE = 0.6
 const MIN_DISTINCT_WITHOUT_NAME_MATCH = 3
-const MAX_LINKS_PER_COLUMN = 2
 const SIMILAR_STRUCTURE_THRESHOLD = 0.6
 const LINKABLE_TYPES = new Set(['integer', 'string', 'mixed'])
 
@@ -113,7 +121,13 @@ export function normaliseValue(value: unknown): string | null {
   return String(value).trim().toLowerCase()
 }
 
+/**
+ * The columns that can link datasets: IDs (a key, an ID header, or values that are all codes like
+ * `SKU-101`) and names (a name header, or the name beside an ID column, like `Library` beside
+ * `Library ID`). Counts, amounts and categories are left out.
+ */
 function linkableColumns(dataset: RelationshipInput): ColumnValues[] {
+  const idNames = entityNameColumns(dataset.columns)
   return dataset.profile.columns
     .filter((c) => LINKABLE_TYPES.has(c.inferredType) && c.distinctCount >= 1)
     .map((profile) => {
@@ -131,6 +145,13 @@ function linkableColumns(dataset: RelationshipInput): ColumnValues[] {
         values,
       }
     })
+    .filter(
+      ({ profile, values }) =>
+        isKeyColumn(profile) ||
+        isNameHeader(profile.name) ||
+        idNames.has(profile.name) ||
+        (profile.inferredType === 'string' && [...values.values()].every(looksLikeIdValue)),
+    )
 }
 
 function keyLinks(
@@ -269,16 +290,20 @@ function similarStructure(
 
 const STRENGTH_RANK: Record<Strength, number> = { strong: 0, moderate: 1, weak: 2 }
 
-/** Keeps each column's best few links, so one busy column doesn't connect to everything. */
+/**
+ * Keeps each column's best link to each other dataset, so a column that matches several columns of
+ * one file (`ID` and `Parent ID`) links once, while a key used by many files links to all of them.
+ * Every dataset is treated alike, however many copies of it there are.
+ */
 function pruneLinks(candidates: RelationshipCandidate[]): RelationshipCandidate[] {
   const links = candidates.filter((c): c is KeyLinkCandidate => c.kind === 'key-link')
   const ranked = [...links].sort(compareLinks)
-  const perColumn = new Map<string, number>()
+  const taken = new Set<string>()
   const kept = new Set<string>()
   for (const link of ranked) {
-    const ends = [refId(link.from), refId(link.to)]
-    if (ends.some((e) => (perColumn.get(e) ?? 0) >= MAX_LINKS_PER_COLUMN)) continue
-    ends.forEach((e) => perColumn.set(e, (perColumn.get(e) ?? 0) + 1))
+    const ends = [`${refId(link.from)}>${link.to.dataset}`, `${refId(link.to)}>${link.from.dataset}`]
+    if (ends.some((e) => taken.has(e))) continue
+    ends.forEach((e) => taken.add(e))
     kept.add(link.id)
   }
   return candidates.filter((c) => c.kind !== 'key-link' || kept.has(c.id))

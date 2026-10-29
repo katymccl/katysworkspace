@@ -79,15 +79,11 @@ function confirmedForRequest(
   return hasAny ? context : null
 }
 
-/** Short, model-readable form of an identifier reason, e.g. `paired-values with "Library ID"`. */
+/** Short, model-readable form of an identifier reason, e.g. `entity-name for "Library ID"`. */
 function reasonLabel(reason: IdentifierReason): string {
   switch (reason.kind) {
     case 'entity-name':
       return `entity-name for "${reason.idColumn}"`
-    case 'paired-values':
-      return `paired-values with "${reason.withColumn}"`
-    case 'mostly-unique':
-      return `mostly-unique (${reason.repeatedValueCount} values repeat)`
     default:
       return reason.kind
   }

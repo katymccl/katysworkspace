@@ -1,5 +1,11 @@
 export { EXTRA_FIELDS_KEY, inferType, numericStats, profileDataset } from './profile'
 export { classifyValue, DEFAULT_MISSING_TOKENS, isMissing } from './values'
 export { withDismissedIdentifiers } from './dismiss'
-export { headerWords, isIdHeader, isNameHeader, looksLikeIdValue } from './identifiers'
+export {
+  headerWords,
+  isIdHeader,
+  isKeyColumn,
+  isNameHeader,
+  looksLikeIdValue,
+} from './identifiers'
 export type * from './types'

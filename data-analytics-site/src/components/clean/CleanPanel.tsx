@@ -11,15 +11,18 @@ import {
   type CleanEdits,
   type Replacement,
 } from '../../lib/clean/apply'
+import { readDate, resolveDate, standardiseDate, type DayMonthOrder } from '../../lib/clean/dates'
 import {
   expectedKind,
   findIssues,
   fits,
   issueCount,
+  type DateFormatIssue,
   type ExpectedKind,
 } from '../../lib/clean/detect'
 import {
   buildCleanRequest,
+  claudeCanHelp,
   requestCleanSuggestions,
   type CleanContext,
 } from '../../lib/clean/request'
@@ -58,8 +61,8 @@ interface SuggestState {
 const NO_SUGGESTIONS: SuggestState = { status: 'idle', fixes: new Map(), standardise: [], error: null }
 
 /**
- * "Prepare my data": the browser lists missing values, duplicate rows and values that don't fit
- * their column; the user decides what to change. Claude can suggest fixes for the flagged cells,
+ * "Prepare my data": the browser lists missing values, duplicate rows, values that don't fit
+ * their column and date columns written several ways; the user decides what to change. Claude can suggest fixes for the flagged cells,
  * but nothing changes until the user applies it, and then only as a new version in this browser.
  */
 export function CleanPanel({ dataset, context, onApply, onClose }: CleanPanelProps) {
@@ -77,10 +80,20 @@ export function CleanPanel({ dataset, context, onApply, onClose }: CleanPanelPro
   const removed = removedRowSet(issues, edits)
   const picked = new Set(edits.removeRows)
   const onToggleRemove = (list: number[]) => setEdits((e) => toggleRemoved(e, list))
-  // Text columns whose values Claude could compare for spellings of the same thing.
-  const hasCategories = profile.columns.some(
-    (c) => c.inferredType === 'string' && !c.isPotentialIdentifier && c.distinctCount >= 2,
-  )
+  const help = useMemo(() => claudeCanHelp(rows, profile, issues), [rows, profile, issues])
+  // Rewritten dates are counted among the changed values, so they're named rather than added.
+  const datesNote =
+    edits.dates.length > 0
+      ? `, including dates in ${edits.dates.map((d) => d.column).join(', ')} written as YYYY-MM-DD`
+      : ''
+  const setDates = (column: string, order: DayMonthOrder | null) =>
+    setEdits((e) => ({
+      ...e,
+      dates: [
+        ...e.dates.filter((d) => d.column !== column),
+        ...(order ? [{ column, order }] : []),
+      ],
+    }))
 
   const setCell = (row: number, column: string, value: string | undefined) =>
     setEdits((e) => {
@@ -125,7 +138,7 @@ export function CleanPanel({ dataset, context, onApply, onClose }: CleanPanelPro
     setApplying(true)
     const parts = [
       removedRows > 0 && `removed ${plural(removedRows, 'row')}`,
-      changedValues > 0 && `changed ${plural(changedValues, 'value')}`,
+      changedValues > 0 && `changed ${plural(changedValues, 'value')}${datesNote}`,
       ...edits.splits.map((s) => `split ${s.column} into ${keptNames(s).join(', ')}`),
     ].filter(Boolean)
     await onApply(
@@ -160,13 +173,15 @@ export function CleanPanel({ dataset, context, onApply, onClose }: CleanPanelPro
                   duplicateCount > 0 && plural(duplicateCount, 'duplicate row'),
                   issues.mismatches.length > 0 &&
                     `${plural(issues.mismatches.length, 'value')} of the wrong kind`,
+                  issues.dateFormats.length > 0 &&
+                    `${plural(issues.dateFormats.length, 'date column')} to tidy`,
                 ]
                   .filter(Boolean)
                   .join(' · ')}
           </p>
         </div>
         <div className="flex items-center gap-1">
-          {(total > 0 || hasCategories) && (
+          {(help.fixes || help.spellings) && (
             <button
               onClick={suggestFixes}
               disabled={suggest.status === 'loading'}
@@ -181,7 +196,9 @@ export function CleanPanel({ dataset, context, onApply, onClose }: CleanPanelPro
                 ? 'Asking Claude…'
                 : suggest.status === 'ready'
                   ? 'Ask again'
-                  : 'Suggest fixes with Claude'}
+                  : help.fixes
+                    ? 'Suggest fixes with Claude'
+                    : 'Check spellings with Claude'}
             </button>
           )}
           <button onClick={onClose} aria-label="Close Prepare my data" className={quietButton}>
@@ -189,10 +206,10 @@ export function CleanPanel({ dataset, context, onApply, onClose }: CleanPanelPro
           </button>
         </div>
         <p className="w-full text-xs text-slate-400">
-          Problems are found in your browser, from every row. Suggesting fixes sends Claude
-          {flaggedForClaude > 0 ? ` the ${plural(flaggedForClaude, 'flagged row')}, ` : ' '}
-          column details and the values of short text columns, not the whole file. Nothing changes
-          until you apply it.
+          Problems are found in your browser, from every row.
+          {(help.fixes || help.spellings) &&
+            ` Asking Claude sends it${flaggedForClaude > 0 ? ` the ${plural(flaggedForClaude, 'flagged row')},` : ''} column details${help.spellings ? ' and the values of text columns that may spell something more than one way' : ''}, not the whole file.`}{' '}
+          Nothing changes until you apply it.
         </p>
       </div>
 
@@ -236,6 +253,36 @@ export function CleanPanel({ dataset, context, onApply, onClose }: CleanPanelPro
               )
             })}
           </ul>
+        </Group>
+      )}
+
+      {issues.dateFormats.length > 0 && (
+        <Group title="Dates to tidy">
+          {issues.dateFormats.map((d) => (
+            <DateFormatCard
+              key={d.column}
+              issue={d}
+              chosen={edits.dates.find((x) => x.column === d.column)?.order ?? null}
+              onChange={(order) => setDates(d.column, order)}
+            >
+              {d.unreadable.length > 0 && (
+                <CellList
+                  heading={`Not read as a date (${d.unreadable.length})`}
+                  cells={d.unreadable.map((row) => ({ row, value: rows[row][d.column] ?? '' }))}
+                  column={d.column}
+                  expected={undefined}
+                  rows={rows}
+                  columns={columns}
+                  edits={edits}
+                  fixes={suggest.fixes}
+                  onChange={setCell}
+                  removed={removed}
+                  picked={picked}
+                  onToggleRemove={onToggleRemove}
+                />
+              )}
+            </DateFormatCard>
+          ))}
         </Group>
       )}
 
@@ -340,7 +387,7 @@ export function CleanPanel({ dataset, context, onApply, onClose }: CleanPanelPro
             ? capitalise(
                 [
                   removedRows > 0 && `remove ${plural(removedRows, 'row')}`,
-                  changedValues > 0 && `change ${plural(changedValues, 'value')}`,
+                  changedValues > 0 && `change ${plural(changedValues, 'value')}${datesNote}`,
                   edits.splits.length > 0 && `split ${plural(edits.splits.length, 'column')}`,
                 ]
                   .filter(Boolean)
@@ -377,22 +424,119 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
   )
 }
 
+/**
+ * One date column written several ways: which ways, what they become, and (when the numbers don't
+ * say) whether `01/04/2024` is 1 April or January 4. Values that aren't dates are listed below.
+ */
+function DateFormatCard({
+  issue,
+  chosen,
+  onChange,
+  children,
+}: {
+  issue: DateFormatIssue
+  /** The order the column will be rewritten in, or null while it's left as it is. */
+  chosen: DayMonthOrder | null
+  onChange: (order: DayMonthOrder | null) => void
+  children: ReactNode
+}) {
+  const [picked, setPicked] = useState<DayMonthOrder | null>(chosen)
+  // When no value depends on the order, either reading gives the same days.
+  const order = issue.order === undefined ? 'month-first' : (issue.order ?? picked)
+  const pick = (next: DayMonthOrder) => {
+    setPicked(next)
+    if (chosen) onChange(next)
+  }
+  // Only the ways of writing that change, e.g. not `2024-01-03` itself.
+  const formats = issue.formats.filter(
+    (f) => order === null || standardiseDate(f.example, order) !== f.example,
+  )
+  const example = issue.ambiguousExample
+  const reading = example ? readDate(example) : null
+  // The example as a day, written the way that order's readers would: "1 April" or "April 1".
+  const meaning = (o: DayMonthOrder) => {
+    const day = reading && resolveDate(reading, o)
+    return day
+      ? new Date(Date.UTC(day.year, day.month - 1, day.day)).toLocaleDateString(
+          o === 'day-first' ? 'en-GB' : 'en-US',
+          { day: 'numeric', month: 'long', timeZone: 'UTC' },
+        )
+      : null
+  }
+
+  return (
+    <div className="space-y-2 rounded-lg border border-slate-200 px-3 py-2 text-sm">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <p className="min-w-0 flex-1 text-slate-700">
+          <span className="font-medium text-slate-900">{issue.column}</span>:{' '}
+          {issue.formats.length === 1
+            ? `${plural(issue.readable, 'date')} written like “${issue.formats[0].example}”, which isn’t read as a date.`
+            : `${plural(issue.readable, 'date')} written ${issue.formats.length} ways.`}
+        </p>
+        <ToggleButton
+          on={chosen !== null}
+          disabled={order === null}
+          onClick={() => onChange(chosen ? null : order)}
+          labelOn="Will change"
+          labelOff="Write all as 2024-01-31"
+        />
+      </div>
+      {issue.order === null && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md bg-amber-50 px-2 py-1.5 text-xs text-amber-900">
+          <span>
+            {example
+              ? `Which comes first in “${example}”?`
+              : 'Some dates put the day first and others the month. Which do most of them use?'}
+          </span>
+          {(['day-first', 'month-first'] as const).map((o) => (
+            <label key={o} className="flex items-center gap-1">
+              <input
+                type="radio"
+                name={`order-${issue.column}`}
+                checked={picked === o}
+                onChange={() => pick(o)}
+                className="accent-violet-600"
+              />
+              {o === 'day-first' ? 'Day first' : 'Month first'}
+              {example && ` (${meaning(o)})`}
+            </label>
+          ))}
+        </div>
+      )}
+      {order !== null && (
+        <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+          {formats.slice(0, 4).map((f) => (
+            <li key={f.example}>
+              {f.example} → <span className="font-medium text-slate-700">{standardiseDate(f.example, order) ?? f.example}</span>
+            </li>
+          ))}
+          {formats.length > 4 && <li>…and {formats.length - 4} more ways</li>}
+        </ul>
+      )}
+      {children}
+    </div>
+  )
+}
+
 function ToggleButton({
   on,
   onClick,
   labelOn,
   labelOff,
+  disabled = false,
 }: {
   on: boolean
   onClick: () => void
   labelOn: string
   labelOff: string
+  disabled?: boolean
 }) {
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
       aria-pressed={on}
-      className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium ${
+      className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-50 ${
         on ? 'bg-violet-600 text-white hover:bg-violet-700' : 'border border-violet-200 text-violet-700 hover:bg-violet-50'
       }`}
     >

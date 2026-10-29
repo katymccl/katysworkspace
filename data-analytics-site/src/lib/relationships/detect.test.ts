@@ -137,7 +137,23 @@ describe('detectRelationships: key links', () => {
     expect(normaliseValue('NA')).toBeNull()
   })
 
-  it('keeps only the best links for each column', () => {
+  it('never links quantities or categories, however many values they share', () => {
+    const stock = dataset(
+      'stock',
+      'stock.csv',
+      ['Copies', 'Shelf', 'Genre'],
+      [
+        ['53', 'Top', 'Librarians'],
+        ['4', 'Middle', 'Library Assistants'],
+        ['16', 'Bottom', 'Library Technicians'],
+        ['61', 'Top', 'Librarians'],
+      ],
+    )
+    // Copies shares 53, 4, 16 and 61 with Number of Staff, and Genre shares Staff Type's values.
+    expect(links([staff, stock])).toEqual([])
+  })
+
+  it('links a key to every dataset that uses it', () => {
     // One ID column whose values appear in four other datasets.
     const hub = dataset('hub', 'hub.csv', ['ref'], [['K1'], ['K2'], ['K3']])
     const others = ['p', 'q', 'r', 's'].map((k) =>
@@ -146,7 +162,30 @@ describe('detectRelationships: key links', () => {
     const touchingHub = links([hub, ...others]).filter(
       (l) => l.from.dataset === 'hub' || l.to.dataset === 'hub',
     )
-    expect(touchingHub).toHaveLength(2)
+    expect(touchingHub.map((l) => (l.from.dataset === 'hub' ? l.to : l.from).dataset).sort()).toEqual(
+      ['p', 'q', 'r', 's'],
+    )
+  })
+
+  it('keeps only the best link from a column to each other dataset', () => {
+    const items = dataset('items', 'items.csv', ['ID', 'Parent ID'], [
+      ['K1', 'K2'],
+      ['K2', 'K3'],
+      ['K3', 'K1'],
+    ])
+    const notes = dataset('notes', 'notes.csv', ['ID'], [['K1'], ['K2'], ['K3']])
+    // notes.ID matches both columns of items; the same-named one wins.
+    expect(links([items, notes]).map(summary)).toEqual([
+      'items.ID -> notes.ID (one-to-one, strong)',
+    ])
+  })
+
+  it('links identical copies of a dataset the same way', () => {
+    const cells = libraries.rows.map((r) => libraries.columns.map((c) => String(r[c])))
+    const copy = dataset('libs2', 'Libraries 2024.csv', [...libraries.columns], cells)
+    const found = links([staff, libraries, copy]).map(summary)
+    expect(found).toContain('staff.Library ID -> libs.LibraryID (many-to-one, strong)')
+    expect(found).toContain('staff.Library ID -> libs2.LibraryID (many-to-one, strong)')
   })
 })
 

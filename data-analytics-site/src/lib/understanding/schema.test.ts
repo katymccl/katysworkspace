@@ -29,7 +29,8 @@ describe('buildAiInput', () => {
     expect(input.rowCount).toBe(3)
     const id = input.columns.find((c) => c.name === 'Library ID')!
     expect(id.sampleValues).toEqual(['L-IHL', 'L-BS'])
-    expect(id.identifierReasons).toContain('id-header')
+    // The ID repeats, one row per staff type, so it is not this file's primary key.
+    expect(id.identifierReasons).toEqual([])
     const staff = input.columns.find((c) => c.name === 'Number of Staff')!
     expect(staff.numericStats).toMatchObject({ min: 4, max: 53, median: 16 })
   })

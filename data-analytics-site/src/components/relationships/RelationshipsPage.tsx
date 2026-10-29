@@ -196,7 +196,8 @@ export function RelationshipsPage({ datasets, resolve }: RelationshipsPageProps)
       />
       <p className="text-xs text-slate-500">
         {Object.values(CONFIDENCE_LABELS).join(' · ')} · Arrows point to the side where each value
-        appears once. Drag the boxes to rearrange them. Click a line or list item to highlight it;
+        appears once: one head for many → one, a head at both ends for one ↔ one, and none for many
+        ↔ many. Drag the boxes to rearrange them. Click a line or list item to highlight it;
         double-click it to confirm it, or to remove a link you confirmed or drew.
       </p>
 

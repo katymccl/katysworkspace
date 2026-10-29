@@ -80,6 +80,19 @@ export function saveConfirmed(datasetId: string, confirmed: ConfirmedDefinitions
   write(`${PREFIX}:confirmed:${datasetId}`, confirmed)
 }
 
+/**
+ * Starts a copied dataset from the original's saved descriptions, AI suggestion and "not an
+ * identifier" choices. Only fills what the copy doesn't have yet; afterwards they're separate.
+ */
+export function copySavedUnderstanding(fromId: string, toId: string): void {
+  for (const kind of ['suggestion', 'confirmed', 'not-identifiers']) {
+    const from = read(`${PREFIX}:${kind}:${fromId}`, z.unknown())
+    if (from !== null && read(`${PREFIX}:${kind}:${toId}`, z.unknown()) === null) {
+      write(`${PREFIX}:${kind}:${toId}`, from)
+    }
+  }
+}
+
 /** Column names the user said are not identifiers, kept per datasetId across new versions. */
 export function loadDismissedIdentifiers(datasetId: string): string[] {
   return read(`${PREFIX}:not-identifiers:${datasetId}`, z.array(z.string())) ?? []

@@ -2,10 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { EMPTY_CONFIRMED, confirmColumn, confirmDatasetField } from './definitions'
 import type { DatasetUnderstanding } from './schema'
 import {
+  copySavedUnderstanding,
   loadConfirmed,
+  loadDismissedIdentifiers,
   loadRegistry,
   loadSuggestion,
   saveConfirmed,
+  saveDismissedIdentifiers,
   saveRegistry,
   saveSuggestion,
 } from './store'
@@ -98,5 +101,22 @@ describe('store', () => {
     expect(() => saveConfirmed('ds-1', EMPTY_CONFIRMED)).not.toThrow()
     expect(loadConfirmed('ds-1')).toBeNull()
     expect(loadRegistry()).toEqual([])
+  })
+
+  it("starts a copy from the original's saved data, without overwriting the copy's own", () => {
+    const confirmed = confirmDatasetField(EMPTY_CONFIRMED, 'name', 'Staff')
+    saveConfirmed('original', confirmed)
+    saveSuggestion('original', 'content-1', suggestion)
+    saveDismissedIdentifiers('original', ['Name'])
+    saveDismissedIdentifiers('copy', ['Code'])
+
+    copySavedUnderstanding('original', 'copy')
+    expect(loadConfirmed('copy')).toEqual(confirmed)
+    expect(loadSuggestion('copy', 'content-1')).toEqual(suggestion)
+    expect(loadDismissedIdentifiers('copy')).toEqual(['Code'])
+
+    // From then on they're separate.
+    saveConfirmed('copy', EMPTY_CONFIRMED)
+    expect(loadConfirmed('original')).toEqual(confirmed)
   })
 })

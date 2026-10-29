@@ -53,12 +53,35 @@ describe('matchDataset', () => {
     })
   })
 
-  it('recognises identical content even when the file was renamed', () => {
+  it('recognises identical content uploaded again under the same name', () => {
     const known = [record({ contentFingerprints: ['old', 'content-1'] })]
-    expect(matchDataset(known, upload('renamed.csv', 'schema-A', 'old'), newId)).toMatchObject({
+    expect(matchDataset(known, upload('sales.csv', 'schema-A', 'old'), newId)).toMatchObject({
       datasetId: 'ds-1',
       matchedBy: 'same-content',
     })
+  })
+
+  it('makes identical content under another name a separate copy of the original', () => {
+    const known = [record({})]
+    expect(matchDataset(known, upload('sales copy.csv', 'schema-A', 'content-1'), newId)).toEqual({
+      datasetId: 'new-id',
+      fingerprints: { schema: 'schema-A', content: 'content-1' },
+      matchedBy: 'copy',
+      copyOf: 'ds-1',
+    })
+  })
+
+  it('treats a copy uploaded again under its own name as that copy', () => {
+    const known = [
+      record({ datasetId: 'original', lastSeenAt: '2026-01-01T00:00:00Z' }),
+      record({ datasetId: 'copy', fileNames: ['copy.csv'], lastSeenAt: '2026-01-02T00:00:00Z' }),
+    ]
+    expect(matchDataset(known, upload('sales.csv', 'schema-A', 'content-1'), newId).datasetId).toBe(
+      'original',
+    )
+    expect(matchDataset(known, upload('copy.csv', 'schema-A', 'content-1'), newId).datasetId).toBe(
+      'copy',
+    )
   })
 
   it('treats same name and columns with new content as a new version', () => {

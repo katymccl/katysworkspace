@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Star } from 'lucide-react'
-import type { ColumnProfile, NumericStats } from '../../lib/profiling'
+import { isKeyColumn, type ColumnProfile, type NumericStats } from '../../lib/profiling'
 import { formatNumber, formatPercent, plural } from './format'
 import { IdentifierStar } from './IdentifierStar'
 import { describeReason, identifierLabel } from './identifierReasons'
@@ -151,8 +151,8 @@ function IdentifierToggle({
 }
 
 function ColumnDetail({ column }: { column: ColumnProfile }) {
-  // Averages of ID numbers mean nothing, so identifiers fall through to examples below.
-  if (column.numericStats && !column.isPotentialIdentifier) {
+  // Averages of ID numbers mean nothing, so keys fall through to examples below.
+  if (column.numericStats && !isKeyColumn(column)) {
     return <NumericDetail stats={column.numericStats} />
   }
 

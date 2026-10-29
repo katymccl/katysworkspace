@@ -24,6 +24,7 @@ import {
   acceptAllSuggestions,
   confirmColumn,
   confirmDatasetField,
+  copySavedUnderstanding,
   loadDismissedIdentifiers,
   loadRegistry,
   revertColumn,
@@ -44,6 +45,7 @@ const RelationshipsPage = lazy(() =>
 const MATCH_NOTE: Record<MatchReason, string> = {
   'new-dataset': '',
   'same-content': ', recognised from an earlier upload',
+  copy: ', as a separate dataset with the same contents as one you uploaded before',
   'new-version': ', as a new version of a dataset you uploaded before',
 }
 
@@ -87,15 +89,27 @@ function App() {
     let firstShown: string | undefined
 
     for (const data of loaded) {
-      const identity = matchDataset(registry, data, () => crypto.randomUUID())
+      const sameVersion = (d: Dataset, datasetId: string) =>
+        d.datasetId === datasetId && d.fingerprints.content === data.fingerprints.content
+      let identity = matchDataset(registry, data, () => crypto.randomUUID())
+      // Already open under another name (a match remembered from before uploads were told apart
+      // by file name): this file is a copy, not the same dataset again.
+      const openElsewhere = [...datasets, ...added].some(
+        (d) => sameVersion(d, identity.datasetId) && d.fileName !== data.fileName,
+      )
+      if (identity.matchedBy === 'same-content' && openElsewhere) {
+        identity = {
+          datasetId: crypto.randomUUID(),
+          fingerprints: data.fingerprints,
+          matchedBy: 'copy',
+          copyOf: identity.datasetId,
+        }
+      }
       registry = recordUpload(registry, identity, data.fileName, now)
+      if (identity.copyOf) copySavedUnderstanding(identity.copyOf, identity.datasetId)
 
       // The exact same version is already open: show it instead of opening a second copy.
-      const open = [...datasets, ...added].find(
-        (d) =>
-          d.datasetId === identity.datasetId &&
-          d.fingerprints.content === data.fingerprints.content,
-      )
+      const open = [...datasets, ...added].find((d) => sameVersion(d, identity.datasetId))
       if (open) {
         firstShown ??= open.id
         messages.push(notice('success', `${data.fileName} is already open`))

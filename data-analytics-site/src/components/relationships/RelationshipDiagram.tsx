@@ -3,7 +3,6 @@ import {
   Background,
   ConnectionMode,
   Controls,
-  MarkerType,
   Panel,
   ReactFlow,
   type Connection,
@@ -13,6 +12,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import type { DiagramLink, DiagramSimilarity } from '../../lib/relationships/merge'
+import { ArrowEdge } from './ArrowEdge'
 import { DatasetNode, type DatasetNodeType } from './DatasetNode'
 import {
   HEADER_COLUMN,
@@ -22,10 +22,11 @@ import {
   type LayoutEdge,
   type NodeModel,
 } from './layout'
-import { cardinalityLabel, linkStyle } from './linkStyle'
+import { arrowHeads, cardinalityLabel, linkStyle } from './linkStyle'
 import { loadPositions, savePositions, type Positions } from './positions'
 
 const nodeTypes = { dataset: DatasetNode }
+const edgeTypes = { arrow: ArrowEdge }
 
 interface RelationshipDiagramProps {
   nodes: NodeModel[]
@@ -99,6 +100,8 @@ export function RelationshipDiagram({
         const style = linkStyle(l, l.id === selectedId)
         return {
           id: l.id,
+          type: 'arrow',
+          data: { heads: arrowHeads(l.cardinality) },
           source: l.from.dataset,
           target: l.to.dataset,
           sourceHandle: handleId(l.from.column, out, 'source'),
@@ -108,15 +111,6 @@ export function RelationshipDiagram({
           labelBgStyle: { fill: '#ffffff' },
           labelBgPadding: [4, 2],
           style: style.line,
-          // Sized in pixels, not relative to the line, so arrowheads match on thick (confirmed or
-          // selected) and thin lines alike.
-          markerEnd: {
-            type: MarkerType.ArrowClosed,
-            color: style.color,
-            width: 14,
-            height: 14,
-            markerUnits: 'userSpaceOnUse',
-          },
           ariaLabel: `${titleOf(l.from.dataset)} ${l.from.column} relates to ${titleOf(l.to.dataset)} ${l.to.column}${l.confirmed ? ', confirmed' : l.rejected ? ', marked not related' : ''}`,
           interactionWidth: 24,
         }
@@ -187,6 +181,7 @@ export function RelationshipDiagram({
         nodes={flowNodes}
         edges={edges}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         onEdgeClick={onEdgeClick}
         onEdgeDoubleClick={onEdgeDoubleClick}
         zoomOnDoubleClick={false}
