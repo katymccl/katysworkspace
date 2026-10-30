@@ -15,6 +15,7 @@ import { UnderstandingPanel } from './components/understanding/UnderstandingPane
 import { Wordmark } from './components/Wordmark'
 import { useAsk } from './hooks/useAsk'
 import { useUnderstanding } from './hooks/useUnderstanding'
+import { forgetUploads } from './lib/ask/full'
 import { toDataset, type Dataset, type View } from './lib/datasets'
 import {
   COLUMN_DRAG_TYPE,
@@ -84,7 +85,8 @@ function App() {
   const [datasets, setDatasets] = useState<Dataset[]>([])
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const [workspaceId, setWorkspaceId] = useState<string | null>(null)
-  const ask = useAsk(datasets, understanding.resolve, workspaceId)
+  const currentWorkspace = workspaces.find((w) => w.id === workspaceId) ?? null
+  const ask = useAsk(datasets, understanding.resolve, workspaceId, currentWorkspace?.fullData ?? false)
   const [view, setView] = useState<View>({ kind: 'home' })
   const [datasetsOpen, setDatasetsOpen] = useState(true)
 
@@ -144,8 +146,6 @@ function App() {
     }
   }, [showWorkspace])
 
-  const currentWorkspace = workspaces.find((w) => w.id === workspaceId) ?? null
-
   async function switchWorkspace(id: string) {
     if (id === workspaceId) return
     setNotices([])
@@ -177,6 +177,7 @@ function App() {
     const gone = workspaces.find((w) => w.id === id)
     const deleted = await deleteWorkspace(id)
     deleteGlossary(id)
+    void forgetUploads(deleted.map((d) => d.datasetId))
     let rest = workspaces.filter((w) => w.id !== id)
     if (rest.length === 0) {
       const fresh = newWorkspace(DEFAULT_WORKSPACE_NAME, crypto.randomUUID(), new Date().toISOString())
@@ -320,8 +321,10 @@ function App() {
 
   function handleRemove(id: string) {
     const remaining = datasets.filter((d) => d.id !== id)
+    const gone = datasets.find((d) => d.id === id)
     setDatasets(remaining)
     void deleteStoredDataset(id)
+    if (gone) void forgetUploads([gone.datasetId])
     setView(remaining.length > 0 ? { kind: 'dataset', id: remaining[0].id } : { kind: 'upload' })
   }
 
@@ -349,6 +352,8 @@ function App() {
     }
     understanding.restore([cleaned])
     void saveDataset(cleaned, ws)
+    // The earlier version's upload is no longer needed.
+    void forgetUploads([old.datasetId], data.fingerprints.content)
     setDatasets((prev) => prev.map((d) => (d.id === id ? cleaned : d)))
     setNotices([notice('success', message)])
   }
@@ -483,12 +488,24 @@ function App() {
               <>
                 <PageHeader
                   title="Ask your data"
-                  subtitle="Ask a question in plain English. Claude plans the answer; your browser works it out from every row."
+                  subtitle={
+                    currentWorkspace?.fullData
+                      ? 'Ask a question in plain English. Claude works out the answer from every row of this workspace’s files.'
+                      : 'Ask a question in plain English. Claude plans the answer; your browser works it out from every row.'
+                  }
                 />
                 <AskPage
                   datasets={datasets}
                   nameOf={(d) => understanding.resolve(d).name.value ?? d.fileName}
                   ask={ask}
+                  workspaceName={currentWorkspace?.name ?? 'this workspace'}
+                  fullData={currentWorkspace?.fullData ?? false}
+                  onFullDataChange={(on) => {
+                    if (!currentWorkspace) return
+                    updateWorkspace(currentWorkspace.id, { fullData: on })
+                    // Turning it off removes the copies Claude could read.
+                    if (!on) void forgetUploads(datasets.map((d) => d.datasetId))
+                  }}
                 />
               </>
             )}

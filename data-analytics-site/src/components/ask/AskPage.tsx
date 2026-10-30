@@ -11,11 +11,23 @@ interface AskPageProps {
   datasets: readonly Dataset[]
   nameOf: (d: Dataset) => string
   ask: ReturnType<typeof useAsk>
+  workspaceName: string
+  /** Whether Claude may analyse this workspace's files in full. */
+  fullData: boolean
+  onFullDataChange: (on: boolean) => void
 }
 
-/** "Ask your data": plain-English questions, answered from the open datasets. */
-export function AskPage({ datasets, nameOf, ask }: AskPageProps) {
+/** "Ask your data": plain-English questions, answered from the open workspace's datasets. */
+export function AskPage({
+  datasets,
+  nameOf,
+  ask,
+  workspaceName,
+  fullData,
+  onFullDataChange,
+}: AskPageProps) {
   const inputId = useId()
+  const fullDataId = useId()
   const [question, setQuestion] = useState('')
 
   if (datasets.length === 0) {
@@ -130,12 +142,31 @@ export function AskPage({ datasets, nameOf, ask }: AskPageProps) {
             </p>
           )}
         </div>
-        <p className="text-xs text-slate-400">
-          Asking sends your question, dataset names, descriptions, column details and a few example
-          values to Claude, which plans how to answer. The answer is worked out in your browser; the
-          files themselves never leave it. Suggesting questions sends the same details, without a
-          question, and the suggestions are kept for these files.
-        </p>
+        <div className="space-y-1.5 border-t border-slate-100 pt-3">
+          <label htmlFor={fullDataId} className="flex items-start gap-2 text-sm text-slate-700">
+            <input
+              id={fullDataId}
+              type="checkbox"
+              checked={fullData}
+              onChange={(e) => onFullDataChange(e.target.checked)}
+              className="mt-0.5 h-4 w-4 accent-violet-600"
+            />
+            <span>
+              Let Claude read the full data in “{workspaceName}”
+              <span className="block text-xs text-slate-500">
+                Exact answers from every row, for any kind of question. Takes longer (often under a
+                minute).
+              </span>
+            </span>
+          </label>
+          <p className="text-xs text-slate-400">
+            {fullData
+              ? 'Asking uploads this workspace’s files to Anthropic, once per version, where Claude analyses every row with code; they’re kept there until you remove the dataset or workspace, or turn this off. Your question, dataset names, descriptions and column details go too.'
+              : 'Asking sends your question, dataset names, descriptions, column details and a few example values to Claude, which plans how to answer. The answer is worked out in your browser; the files themselves never leave it.'}{' '}
+            Suggesting questions sends the details without the files, and the suggestions are kept
+            for these files.
+          </p>
+        </div>
       </form>
 
       {ask.entries.length > 0 && (

@@ -8,6 +8,8 @@ import {
   requestQuestions,
 } from '../lib/ask/request'
 import type { AskAnswer } from '../lib/ask/schema'
+import { buildAnalyseRequest, ensureUploaded, requestAnalysis } from '../lib/ask/full'
+import type { AnalyseResult } from '../lib/ask/fullSchema'
 import { STORES, getOne, put } from '../lib/persist/db'
 import { loadSuggestedQuestions, saveSuggestedQuestions } from '../lib/ask/store'
 import {
@@ -37,6 +39,12 @@ export interface AskEntry {
   error: UnderstandingError | null
   /** Names of the datasets as they were when asked, for describing the plan. */
   names: Record<string, string>
+  /** What's happening while it loads, e.g. "Sending staff.csv to Claude…". */
+  progress?: string | null
+  /** Claude's answer from the full data, when the workspace allows it. */
+  full?: AnalyseResult | null
+  /** Why a full-data workspace's question was answered from summaries instead. */
+  modeNote?: string | null
 }
 
 /** Claude's suggested questions for the open datasets; only fetched when asked for. */
@@ -61,6 +69,8 @@ export function useAsk(
   datasets: readonly Dataset[],
   resolve: (d: Dataset) => ResolvedUnderstanding,
   workspaceId: string | null,
+  /** Whether the workspace lets Claude analyse its files in full. */
+  fullData = false,
 ) {
   const [byWorkspace, setByWorkspace] = useState<Record<string, AskEntry[]>>({})
   const entries = useMemo(
@@ -142,9 +152,41 @@ export function useAsk(
       const names = Object.fromEntries(summaries.map((s) => [s.key, s.name]))
 
       const request = buildAskRequest(question, summaries, links, previousQuestions)
+      let modeNote: string | null = null
+      if (fullData) {
+        // Upload each dataset (once per version), then let Claude analyse every row.
+        const files: { dataset: string; fileId: string; fileName: string }[] = []
+        const unsent: string[] = []
+        for (const d of workspace) {
+          update({ progress: `Sending ${names[d.datasetId]} to Claude…` })
+          const upload = await ensureUploaded(d)
+          if (upload.ok) {
+            files.push({ dataset: d.datasetId, fileId: upload.fileId, fileName: d.fileName })
+          } else {
+            unsent.push(
+              upload.tooLarge
+                ? `${names[d.datasetId]} is too large to send in full`
+                : `${names[d.datasetId]} couldn’t be sent (${upload.message})`,
+            )
+          }
+        }
+        if (unsent.length === 0) {
+          update({ progress: 'Claude is analysing every row…' })
+          const analysed = await requestAnalysis(buildAnalyseRequest(request, files))
+          if (!analysed.ok) {
+            update({ status: 'error', error: analysed.error, names, progress: null })
+            return
+          }
+          update({ status: 'done', full: analysed.result, names, progress: null })
+          return
+        }
+        modeNote = `${unsent.join('; ')}, so this answer was planned from summaries and worked out in your browser.`
+      }
+
+      update({ progress: 'Working out how to answer…' })
       const response = await requestAnswer(request)
       if (!response.ok) {
-        update({ status: 'error', error: response.error, names })
+        update({ status: 'error', error: response.error, names, progress: null })
         return
       }
       const { answer } = response.result
@@ -156,9 +198,11 @@ export function useAsk(
         answer,
         outcome: answer.answerable ? runQuery(answer.plan, tables) : null,
         names,
+        progress: null,
+        modeNote,
       })
     },
-    [context, workspace, setEntriesFor],
+    [context, workspace, setEntriesFor, fullData],
   )
 
   const ask = useCallback(
@@ -230,5 +274,16 @@ export function useAsk(
 }
 
 function blankEntry(id: string, question: string): AskEntry {
-  return { id, question, status: 'loading', answer: null, outcome: null, error: null, names: {} }
+  return {
+    id,
+    question,
+    status: 'loading',
+    answer: null,
+    outcome: null,
+    error: null,
+    names: {},
+    progress: null,
+    full: null,
+    modeNote: null,
+  }
 }
