@@ -13,7 +13,9 @@ import {
   type ResolvedUnderstanding,
   type StoredSuggestion,
   type UnderstandingError,
+  withGlossary,
 } from '../lib/understanding'
+import type { GlossaryTerm } from '../lib/glossary'
 
 export interface InterpretationState {
   status: 'idle' | 'loading' | 'ready' | 'error'
@@ -31,7 +33,7 @@ const suggestionKey = (d: Dataset) => `${d.datasetId}:${d.fingerprints.content}`
  * React glue for dataset understanding: AI suggestions per content version, confirmed definitions
  * per datasetId, both mirrored to browser storage. Interpretation only runs when asked.
  */
-export function useUnderstanding() {
+export function useUnderstanding(glossary: readonly GlossaryTerm[] = []) {
   const [interpretations, setInterpretations] = useState<Record<string, InterpretationState>>({})
   const [confirmed, setConfirmed] = useState<Record<string, ConfirmedDefinitions>>({})
 
@@ -64,9 +66,15 @@ export function useUnderstanding() {
         [key]: { ...(prev[key] ?? IDLE), status: 'loading', error: null },
       }))
 
-      // Confirmed definitions go along as settled facts, so a re-run builds on the user's edits.
+      // Confirmed definitions and glossary meanings go along as settled facts, so a re-run builds
+      // on the user's edits.
+      const settled = withGlossary(
+        confirmed[dataset.datasetId] ?? EMPTY_CONFIRMED,
+        dataset.columns,
+        glossary,
+      )
       const outcome = await requestUnderstanding(
-        buildAiInput(dataset.fileName, dataset.profile, confirmed[dataset.datasetId]),
+        buildAiInput(dataset.fileName, dataset.profile, settled),
       )
 
       if (outcome.ok) {
@@ -83,7 +91,7 @@ export function useUnderstanding() {
         }))
       }
     },
-    [confirmed],
+    [confirmed, glossary],
   )
 
   const updateConfirmed = useCallback(
@@ -106,6 +114,7 @@ export function useUnderstanding() {
       dataset.columns,
       stateFor(dataset).suggestion?.understanding ?? null,
       confirmed[dataset.datasetId] ?? EMPTY_CONFIRMED,
+      glossary,
     )
 
   return { restore, interpret, updateConfirmed, stateFor, resolve }

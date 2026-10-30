@@ -60,6 +60,8 @@ export const RelationshipRequestSchema = z
                     ]),
                     role: z.enum(COLUMN_ROLES).optional(),
                     description: text(OUTPUT_LIMITS.columnDescription).optional(),
+                    /** The workspace glossary term the column follows, if any. */
+                    glossaryTerm: text().optional(),
                     isPotentialIdentifier: z.boolean(),
                     distinctCount: z.number().int().nonnegative(),
                   })

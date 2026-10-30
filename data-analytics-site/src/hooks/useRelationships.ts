@@ -186,7 +186,11 @@ export function summarise(d: Dataset, resolved: ResolvedUnderstanding): DatasetS
     columnDefinitions: new Map(
       resolved.columns.map((c) => [
         c.name,
-        { description: c.description.value, role: c.role.value },
+        {
+          description: c.description.value,
+          role: c.role.value,
+          glossaryTerm: c.glossaryTerm?.term ?? null,
+        },
       ]),
     ),
   }

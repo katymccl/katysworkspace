@@ -55,6 +55,7 @@ export function buildAskRequest(
           name: t(c.name),
           type: c.inferredType,
           ...(def?.role && { role: def.role }),
+          ...(def?.glossaryTerm && { glossaryTerm: t(def.glossaryTerm) }),
           ...(def?.description && {
             description: t(def.description, OUTPUT_LIMITS.columnDescription),
           }),

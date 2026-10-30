@@ -23,6 +23,8 @@ interface CsvPreviewProps {
   about?: ReactNode
   /** Extra content for each column card, e.g. the column's meaning. */
   renderDefinition?: (column: ColumnProfile) => ReactNode
+  /** Makes column cards draggable (onto the glossary). */
+  columnDrag?: { type: string; data: (column: ColumnProfile) => string }
   onRemove: () => void
   /** Opens the generator with this dataset as the base. */
   onGenerateRelated?: () => void
@@ -43,6 +45,7 @@ export function CsvPreview({
   title,
   about,
   renderDefinition,
+  columnDrag,
   onRemove,
   onGenerateRelated,
   onIdentifierDismissed,
@@ -186,6 +189,7 @@ export function CsvPreview({
         columns={profile.columns}
         renderDefinition={renderDefinition}
         onIdentifierDismissed={onIdentifierDismissed}
+        drag={columnDrag}
       />
 
       <div>

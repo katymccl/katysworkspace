@@ -75,6 +75,8 @@ export const AskRequestSchema = z
                     ]),
                     role: z.enum(COLUMN_ROLES).optional(),
                     description: text(OUTPUT_LIMITS.columnDescription).optional(),
+                    /** The workspace glossary term the column follows, if any. */
+                    glossaryTerm: text().optional(),
                     distinctCount: z.number().int().nonnegative(),
                     /** A few real values, so filters can match how the data is written. */
                     examples: z

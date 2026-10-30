@@ -25,6 +25,7 @@ export type View =
   | { kind: 'upload'; baseId?: string }
   | { kind: 'all' }
   | { kind: 'ask' }
+  | { kind: 'glossary' }
   | { kind: 'dataset'; id: string }
 
 export function toDataset(

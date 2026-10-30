@@ -86,7 +86,7 @@ export function askMessage(request: AskRequest): string {
 const SYSTEM_PROMPT = `You turn a non-technical person's question about their CSV datasets into a query plan. The plan runs in their browser on the full data, so you never see the rows and never compute numbers yourself.
 
 You receive:
-- <datasets>: each dataset's key, name, description and what a row represents (when known), its row count, and its columns with type, role and meaning (when known), how many distinct values each has, and a few example values.
+- <datasets>: each dataset's key, name, description and what a row represents (when known), its row count, and its columns with type, role and meaning (when known), how many distinct values each has, and a few example values. glossaryTerm, when present, is the term from the user's glossary that the column follows; read the question's words in its terms (a question about "branch codes" means columns whose glossaryTerm or meaning is about branch codes).
 - <links>: pairs of columns in different datasets that hold the same values (for example the same customer codes). confirmed means the person has said the link is right; otherwise it was found by comparing values. cardinality says whether each "to" value appears once (one-to-one, many-to-one) or several times (many-to-many).
 - <previous_questions>, when present: earlier questions in this conversation, so you can read follow-ups such as "and by month?" in context.
 - <question>: what the person wants to know.

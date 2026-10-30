@@ -9,12 +9,25 @@ import { Home } from './components/Home'
 import { Notices, type Notice } from './components/Notices'
 import { Sidebar } from './components/Sidebar'
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher'
+import { GlossaryPage } from './components/glossary/GlossaryPage'
 import { ColumnDefinition } from './components/understanding/ColumnDefinition'
 import { UnderstandingPanel } from './components/understanding/UnderstandingPanel'
 import { Wordmark } from './components/Wordmark'
 import { useAsk } from './hooks/useAsk'
 import { useUnderstanding } from './hooks/useUnderstanding'
 import { toDataset, type Dataset, type View } from './lib/datasets'
+import {
+  COLUMN_DRAG_TYPE,
+  addColumnTerm,
+  columnDragData,
+  deleteGlossary,
+  findTerm,
+  loadGlossary,
+  removeTerm,
+  saveGlossary,
+  updateTerm,
+  type GlossaryTerm,
+} from './lib/glossary'
 import { deleteStoredDataset, fromStored, loadStoredDatasets, saveDataset } from './lib/persist/datasets'
 import {
   DEFAULT_WORKSPACE_NAME,
@@ -65,7 +78,9 @@ function notice(kind: Notice['kind'], message: string): Notice {
 }
 
 function App() {
-  const understanding = useUnderstanding()
+  // The open workspace's glossary; its meanings fill in for AI suggestions on matching columns.
+  const [glossary, setGlossary] = useState<GlossaryTerm[]>([])
+  const understanding = useUnderstanding(glossary)
   const [datasets, setDatasets] = useState<Dataset[]>([])
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const [workspaceId, setWorkspaceId] = useState<string | null>(null)
@@ -93,6 +108,7 @@ function App() {
       workspaceReady.current = Promise.resolve(id)
       saveCurrentWorkspaceId(id)
       setWorkspaceId(id)
+      setGlossary(loadGlossary(id))
       const stored = await loadStoredDatasets(id)
       if (showing.current !== id) return null
       const restored = stored.map((s) => fromStored(s, loadDismissedIdentifiers(s.datasetId)))
@@ -160,6 +176,7 @@ function App() {
   async function removeWorkspace(id: string) {
     const gone = workspaces.find((w) => w.id === id)
     const deleted = await deleteWorkspace(id)
+    deleteGlossary(id)
     let rest = workspaces.filter((w) => w.id !== id)
     if (rest.length === 0) {
       const fresh = newWorkspace(DEFAULT_WORKSPACE_NAME, crypto.randomUUID(), new Date().toISOString())
@@ -194,6 +211,50 @@ function App() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [menuOpen])
+
+  function changeGlossary(next: GlossaryTerm[]) {
+    if (!workspaceId) return
+    setGlossary(next)
+    saveGlossary(workspaceId, next)
+  }
+
+  /** Adds a column (dragged in, or from its "Add to glossary" button) as a glossary term. */
+  function addColumnToGlossary({ datasetId, column }: { datasetId: string; column: string }) {
+    const d = datasets.find((x) => x.datasetId === datasetId)
+    if (!d) return
+    const resolved = understanding.resolve(d).columns.find((c) => c.name === column)
+    const { terms, term, added } = addColumnTerm(
+      glossary,
+      {
+        datasetId,
+        name: column,
+        description: resolved?.description.value ?? null,
+        role: resolved?.role.value ?? null,
+      },
+      crypto.randomUUID(),
+      new Date().toISOString(),
+    )
+    if (added) changeGlossary(terms)
+    setNotices([
+      notice(
+        'success',
+        added
+          ? `Added “${term.term}” to the glossary. Columns with that name in this workspace now use its meaning.`
+          : `“${column}” is already in the glossary as “${term.term}”.`,
+      ),
+    ])
+  }
+
+  /** Adds a term written by hand on the Glossary page, unless its name is already a term. */
+  function addTypedTerm(t: { term: string; description: string; role: GlossaryTerm['role'] }) {
+    const existing = findTerm(glossary, t.term)
+    if (existing) {
+      setNotices([notice('error', `“${t.term}” is already in the glossary as “${existing.term}”.`)])
+      return
+    }
+    const now = new Date().toISOString()
+    changeGlossary([...glossary, { id: crypto.randomUUID(), ...t, aliases: [], from: null, updatedAt: now }])
+  }
 
   async function handleUpload(loaded: CsvData[], errors: string[]) {
     const ws = await workspaceReady.current
@@ -335,6 +396,8 @@ function App() {
         onDelete={(id) => void removeWorkspace(id)}
       />
     ),
+    glossaryCount: glossary.length,
+    onDropColumn: addColumnToGlossary,
   }
 
   return (
@@ -430,6 +493,33 @@ function App() {
               </>
             )}
 
+            {view.kind === 'glossary' && (
+              <>
+                <PageHeader
+                  title="Glossary"
+                  subtitle={`Terms for ${currentWorkspace?.name ?? 'this workspace'}. Their meanings apply to matching columns in every dataset here, and Claude uses them too.`}
+                />
+                <GlossaryPage
+                  terms={glossary}
+                  columns={datasets.flatMap((d) => {
+                    const r = understanding.resolve(d)
+                    return r.columns.map((c) => ({
+                      datasetName: r.name.value ?? d.fileName,
+                      column: c.name,
+                      overridden:
+                        c.description.source === 'confirmed' || c.role.source === 'confirmed',
+                    }))
+                  })}
+                  onAdd={addTypedTerm}
+                  onUpdate={(id, change) =>
+                    changeGlossary(updateTerm(glossary, id, change, new Date().toISOString()))
+                  }
+                  onRemove={(id) => changeGlossary(removeTerm(glossary, id))}
+                  onDropColumn={addColumnToGlossary}
+                />
+              </>
+            )}
+
             {view.kind === 'all' && (
               <>
                 <PageHeader
@@ -456,6 +546,10 @@ function App() {
                 onCleaned={(columns, rows, message) =>
                   handleCleaned(selected.id, columns, rows, message)
                 }
+                onAddToGlossary={(column) =>
+                  addColumnToGlossary({ datasetId: selected.datasetId, column })
+                }
+                onOpenGlossary={() => setView({ kind: 'glossary' })}
               />
             )}
           </div>
@@ -482,6 +576,8 @@ function DatasetPage({
   onGenerateRelated,
   onIdentifierDismissed,
   onCleaned,
+  onAddToGlossary,
+  onOpenGlossary,
 }: {
   dataset: Dataset
   understanding: ReturnType<typeof useUnderstanding>
@@ -489,6 +585,8 @@ function DatasetPage({
   onGenerateRelated: () => void
   onIdentifierDismissed: (columnName: string, dismissed: boolean) => void
   onCleaned: (columns: string[], rows: CsvRow[], message: string) => Promise<void>
+  onAddToGlossary: (column: string) => void
+  onOpenGlossary: () => void
 }) {
   const resolved = understanding.resolve(dataset)
   // Which open dataset "Prepare my data" is showing for; switching datasets closes it.
@@ -504,6 +602,10 @@ function DatasetPage({
       onRemove={onRemove}
       onGenerateRelated={onGenerateRelated}
       onIdentifierDismissed={onIdentifierDismissed}
+      columnDrag={{
+        type: COLUMN_DRAG_TYPE,
+        data: (column) => columnDragData(dataset.datasetId, column.name),
+      }}
       onClean={() => setCleaningId(dataset.id)}
       cleanPanel={
         cleaning && (
@@ -541,6 +643,8 @@ function DatasetPage({
           column={resolved.columns[column.index]}
           onSave={(change) => update((c) => confirmColumn(c, column.name, change))}
           onRevert={() => update((c) => revertColumn(c, column.name))}
+          onAddToGlossary={() => onAddToGlossary(column.name)}
+          onOpenGlossary={onOpenGlossary}
         />
       )}
     />

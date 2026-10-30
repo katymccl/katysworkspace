@@ -21,8 +21,14 @@ export interface DatasetSummary {
   description: string | null
   rowMeaning: string | null
   profile: DatasetProfile
-  /** Column meanings and roles, confirmed or suggested, where known. */
-  columnDefinitions: ReadonlyMap<string, { description: string | null; role: ColumnRole | null }>
+  /**
+   * Column meanings and roles (confirmed, from the glossary, or suggested) where known, and the
+   * glossary term each column follows.
+   */
+  columnDefinitions: ReadonlyMap<
+    string,
+    { description: string | null; role: ColumnRole | null; glossaryTerm?: string | null }
+  >
 }
 
 /**
@@ -51,6 +57,7 @@ export function buildRelationshipRequest(
           name: t(c.name),
           type: c.inferredType,
           ...(def?.role && { role: def.role }),
+          ...(def?.glossaryTerm && { glossaryTerm: t(def.glossaryTerm) }),
           ...(def?.description && {
             description: t(def.description, OUTPUT_LIMITS.columnDescription),
           }),
