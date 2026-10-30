@@ -1,24 +1,20 @@
 /**
- * Finds likely relationships between datasets from their actual values. Pure and deterministic,
- * independent of React and AI: the same datasets always give the same candidates, in the same order.
+ * Measures how datasets' columns overlap, from their actual values, as evidence for Claude, which
+ * decides what is related. Nothing here decides: every pair of columns that shares a value is
+ * measured, and every pair of datasets that shares most column names is noted. Pure and
+ * deterministic, independent of React and AI: the same datasets always give the same measurements,
+ * in the same order.
  *
  * Two kinds of evidence:
- * - key links: an ID or name column in one dataset whose values reappear in one of another
- *   (e.g. Staff."Library ID" values all exist in Libraries."Library ID"). Quantities, amounts and
- *   categories are never compared, since they share values by coincidence.
+ * - column overlaps: values of a column in one dataset that reappear in a column of another (e.g.
+ *   Staff."Library ID" values all exist in Libraries."Library ID"). Time columns are compared as
+ *   periods, so a `Month` of `Jan 2024` meets one of `2024-01`.
  * - similar structure: two datasets that share most of their column names (e.g. monthly exports)
  */
-import {
-  entityNameColumns,
-  headerWords,
-  idEntity,
-  isIdHeader,
-  isKeyColumn,
-  isNameHeader,
-  looksLikeIdValue,
-} from '../profiling/identifiers'
+import { headerWords, idEntity, isIdHeader } from '../profiling/identifiers'
 import type { ColumnProfile, DatasetProfile, RawRow } from '../profiling/types'
 import { classifyValue, isMissing } from '../profiling/values'
+import { periodColumn, periodKey, type PeriodGrain } from './periods'
 
 export interface RelationshipInput {
   /** Stable key for the dataset within this analysis (e.g. its datasetId). */
@@ -36,26 +32,30 @@ export interface ColumnRef {
 }
 
 export type Cardinality = 'one-to-one' | 'many-to-one' | 'many-to-many'
-export type Strength = 'strong' | 'moderate' | 'weak'
 
+/** How two columns' values overlap. A measurement, not a judgement that they're related. */
 export interface KeyLinkCandidate {
   kind: 'key-link'
   /** Stable id derived from the endpoints, e.g. `staff:Library ID->libraries:Library ID`. */
   id: string
-  /** The "many" side when there is one: the column that refers to the other. */
+  /** The "many" side when there is one: the column that would refer to the other. */
   from: ColumnRef
   /** The "one" side when there is one: usually a unique key. */
   to: ColumnRef
   cardinality: Cardinality
-  strength: Strength
   /** Distinct values found in both columns. */
   sharedCount: number
   /** Share of `from`'s distinct values that also appear in `to` (0–1). */
   fromCoverage: number
   /** Share of `to`'s distinct values that also appear in `from` (0–1). */
   toCoverage: number
-  /** The column names suggest the link (same words, or an ID named after the other dataset). */
+  /** The column names suggest a link (same words, or an ID named after the other dataset). */
   namesMatch: boolean
+  /**
+   * For two time columns, the kind of period they share; values were matched as periods, so
+   * `Jan 2024` met `2024-01`. Null for other columns.
+   */
+  period: PeriodGrain | null
   /** Up to five shared values, sorted, as examples. */
   sharedExamples: string[]
 }
@@ -73,41 +73,63 @@ export type RelationshipCandidate = KeyLinkCandidate | SimilarStructureCandidate
 
 /** Distinct values kept per column; larger columns are compared on their first distinct values. */
 export const MAX_DISTINCT_PER_COLUMN = 100_000
-const MIN_SHARED = 2
-const MIN_COVERAGE = 0.6
-const MIN_DISTINCT_WITHOUT_NAME_MATCH = 3
+/** Datasets sharing at least this share of their column names are noted as similar. */
 const SIMILAR_STRUCTURE_THRESHOLD = 0.6
-const LINKABLE_TYPES = new Set(['integer', 'string', 'mixed'])
+/** Yes/no and empty columns overlap with any other of their kind, which says nothing. */
+const SKIPPED_TYPES = new Set(['empty', 'boolean'])
+const PERIOD_SAMPLE_ROWS = 10_000
 
 interface ColumnValues {
   ref: ColumnRef
   profile: ColumnProfile
   words: string[]
-  /** Normalised value → the first original text seen, used for display. */
+  /** Normalised value (or period key) → the first original text seen, used for display. */
   values: Map<string, string>
+  /** The kind of period a time column holds; null for other columns. */
+  period: PeriodGrain | null
+  /** Whether every value is present and different (for time columns: every period). */
+  unique: boolean
 }
 
-/** Detects relationship candidates between every pair of datasets. */
-export function detectRelationships(
-  datasets: readonly RelationshipInput[],
-): RelationshipCandidate[] {
-  const columnsByDataset = datasets.map(linkableColumns)
+/**
+ * Measures every pair of datasets: each pair of columns sharing at least one value, and whether
+ * the datasets share most of their column names. Overlaps come first, those with matching names
+ * and the most shared values leading, so the strongest evidence survives any limit on how many
+ * are sent.
+ */
+export function measureOverlaps(datasets: readonly RelationshipInput[]): RelationshipCandidate[] {
+  const columnsByDataset = datasets.map(measuredColumns)
   const candidates: RelationshipCandidate[] = []
-
   for (let i = 0; i < datasets.length; i++) {
     for (let j = i + 1; j < datasets.length; j++) {
-      const links = keyLinks(datasets[i], columnsByDataset[i], datasets[j], columnsByDataset[j])
-      const similar = similarStructure(datasets[i], datasets[j])
-      if (similar) {
-        // Parallel copies (e.g. monthly exports) share values in their same-named columns; that's
-        // the "same columns" relationship, not one dataset referring to the other.
-        candidates.push(similar, ...links.filter((l) => !sameColumnName(l.from, l.to)))
-      } else {
-        candidates.push(...links)
+      for (const x of columnsByDataset[i]) {
+        for (const y of columnsByDataset[j]) {
+          const overlap = compareColumns(x, datasets[i], y, datasets[j])
+          if (overlap.sharedCount > 0) candidates.push(overlap)
+        }
       }
+      const similar = similarStructure(datasets[i], datasets[j])
+      if (similar) candidates.push(similar)
     }
   }
-  return pruneLinks(candidates).sort(compareCandidates)
+  return candidates.sort(compareCandidates)
+}
+
+/**
+ * How two particular columns overlap, even when they share nothing: for showing the evidence
+ * behind a link Claude suggested or the user drew. Null when a dataset or column isn't open.
+ */
+export function measureLink(
+  datasets: readonly RelationshipInput[],
+  a: ColumnRef,
+  b: ColumnRef,
+): KeyLinkCandidate | null {
+  const da = datasets.find((d) => d.key === a.dataset)
+  const db = datasets.find((d) => d.key === b.dataset)
+  const ca = da?.profile.columns.find((c) => c.name === a.column)
+  const cb = db?.profile.columns.find((c) => c.name === b.column)
+  if (!da || !db || !ca || !cb) return null
+  return compareColumns(columnValues(da, ca), da, columnValues(db, cb), db)
 }
 
 /**
@@ -121,53 +143,38 @@ export function normaliseValue(value: unknown): string | null {
   return String(value).trim().toLowerCase()
 }
 
-/**
- * The columns that can link datasets: IDs (a key, an ID header, or values that are all codes like
- * `SKU-101`) and names (a name header, or the name beside an ID column, like `Library` beside
- * `Library ID`). Counts, amounts and categories are left out.
- */
-function linkableColumns(dataset: RelationshipInput): ColumnValues[] {
-  const idNames = entityNameColumns(dataset.columns)
+function measuredColumns(dataset: RelationshipInput): ColumnValues[] {
   return dataset.profile.columns
-    .filter((c) => LINKABLE_TYPES.has(c.inferredType) && c.distinctCount >= 1)
-    .map((profile) => {
-      const values = new Map<string, string>()
-      for (const row of dataset.rows) {
-        if (values.size >= MAX_DISTINCT_PER_COLUMN) break
-        const raw = row[profile.name]
-        const v = normaliseValue(raw)
-        if (v !== null && !values.has(v)) values.set(v, String(raw).trim())
-      }
-      return {
-        ref: { dataset: dataset.key, column: profile.name },
-        profile,
-        words: headerWords(profile.name),
-        values,
-      }
-    })
-    .filter(
-      ({ profile, values }) =>
-        isKeyColumn(profile) ||
-        isNameHeader(profile.name) ||
-        idNames.has(profile.name) ||
-        (profile.inferredType === 'string' && [...values.values()].every(looksLikeIdValue)),
-    )
+    .filter((c) => !SKIPPED_TYPES.has(c.inferredType) && c.distinctCount >= 1)
+    .map((profile) => columnValues(dataset, profile))
 }
 
-function keyLinks(
-  a: RelationshipInput,
-  aColumns: ColumnValues[],
-  b: RelationshipInput,
-  bColumns: ColumnValues[],
-): KeyLinkCandidate[] {
-  const links: KeyLinkCandidate[] = []
-  for (const x of aColumns) {
-    for (const y of bColumns) {
-      const link = compareColumns(x, a, y, b)
-      if (link) links.push(link)
-    }
+/** A column's distinct values, read as periods when it's a time column. */
+function columnValues(dataset: RelationshipInput, profile: ColumnProfile): ColumnValues {
+  // Judged on the different values among the first rows, which is quick on big files.
+  const sample = new Set(dataset.rows.slice(0, PERIOD_SAMPLE_ROWS).map((r) => r[profile.name]))
+  const period = periodColumn(profile.name, sample)
+  const key = period
+    ? (raw: unknown) => periodKey(raw, period)
+    : (raw: unknown) => normaliseValue(raw)
+  const values = new Map<string, string>()
+  let present = 0
+  for (const row of dataset.rows) {
+    const raw = row[profile.name]
+    const v = key(raw)
+    if (v === null) continue
+    present++
+    if (values.size < MAX_DISTINCT_PER_COLUMN && !values.has(v)) values.set(v, String(raw).trim())
   }
-  return links
+  return {
+    ref: { dataset: dataset.key, column: profile.name },
+    profile,
+    words: headerWords(profile.name),
+    values,
+    period,
+    // Time columns repeat by period, so `Jan 2024` and `2024-01` in one column are a repeat.
+    unique: period ? present > 0 && values.size === present : profile.isUnique,
+  }
 }
 
 function compareColumns(
@@ -175,65 +182,41 @@ function compareColumns(
   xDataset: RelationshipInput,
   y: ColumnValues,
   yDataset: RelationshipInput,
-): KeyLinkCandidate | null {
-  if (x.values.size === 0 || y.values.size === 0) return null
-  const [small, large] =
-    x.values.size <= y.values.size ? [x.values, y.values] : [y.values, x.values]
+): KeyLinkCandidate {
+  // A time column's values are period keys, which never equal another column's plain values.
   const shared: string[] = []
-  for (const v of small.keys()) if (large.has(v)) shared.push(v)
+  if (x.period === y.period) {
+    const [small, large] =
+      x.values.size <= y.values.size ? [x.values, y.values] : [y.values, x.values]
+    for (const v of small.keys()) if (large.has(v)) shared.push(v)
+  }
 
-  const namesMatch = columnNamesMatch(x, xDataset, y, yDataset)
-  const xCoverage = shared.length / x.values.size
-  const yCoverage = shared.length / y.values.size
-  const coverage = Math.max(xCoverage, yCoverage)
-  const minDistinct = Math.min(x.values.size, y.values.size)
-
-  // Value evidence: enough shared values, covering most of one side. Small vocabularies (yes/no,
-  // a handful of categories) overlap by coincidence, so they need matching names as well.
-  const valueEvidence =
-    shared.length >= MIN_SHARED &&
-    coverage >= MIN_COVERAGE &&
-    (minDistinct >= MIN_DISTINCT_WITHOUT_NAME_MATCH || namesMatch)
-  const nameEvidence = namesMatch && shared.length >= 1
-  if (!valueEvidence && !nameEvidence) return null
-
-  const xUnique = x.profile.isUnique
-  const yUnique = y.profile.isUnique
+  const ratio = (n: number, d: number) => (d === 0 ? 0 : n / d)
+  const xCoverage = ratio(shared.length, x.values.size)
+  const yCoverage = ratio(shared.length, y.values.size)
   // Point from the "many" side to the "one" side; with no clear side, from the better-covered one.
-  const forward = yUnique && !xUnique ? true : xUnique && !yUnique ? false : xCoverage >= yCoverage
+  const forward =
+    y.unique && !x.unique ? true : x.unique && !y.unique ? false : xCoverage >= yCoverage
   const [from, to] = forward ? [x, y] : [y, x]
-  const [fromCoverage, toCoverage] = forward ? [xCoverage, yCoverage] : [yCoverage, xCoverage]
-  const cardinality: Cardinality =
-    xUnique && yUnique ? 'one-to-one' : xUnique || yUnique ? 'many-to-one' : 'many-to-many'
-
-  const strength: Strength =
-    valueEvidence && fromCoverage >= 0.9 && (namesMatch || to.profile.isUnique)
-      ? 'strong'
-      : valueEvidence
-        ? 'moderate'
-        : 'weak'
 
   return {
     kind: 'key-link',
     id: `${refId(from.ref)}->${refId(to.ref)}`,
     from: from.ref,
     to: to.ref,
-    cardinality,
-    strength,
+    cardinality:
+      x.unique && y.unique ? 'one-to-one' : x.unique || y.unique ? 'many-to-one' : 'many-to-many',
     sharedCount: shared.length,
-    fromCoverage,
-    toCoverage,
-    namesMatch,
+    fromCoverage: forward ? xCoverage : yCoverage,
+    toCoverage: forward ? yCoverage : xCoverage,
+    namesMatch: columnNamesMatch(x, xDataset, y, yDataset),
+    period: x.period === y.period ? x.period : null,
     // Shown as written in the referring column (sorted for stable output).
     sharedExamples: shared
       .sort()
       .slice(0, 5)
       .map((v) => from.values.get(v)!),
   }
-}
-
-function sameColumnName(a: ColumnRef, b: ColumnRef): boolean {
-  return headerWords(a.column).join(' ') === headerWords(b.column).join(' ')
 }
 
 /**
@@ -288,40 +271,17 @@ function similarStructure(
   }
 }
 
-const STRENGTH_RANK: Record<Strength, number> = { strong: 0, moderate: 1, weak: 2 }
-
-/**
- * Keeps each column's best link to each other dataset, so a column that matches several columns of
- * one file (`ID` and `Parent ID`) links once, while a key used by many files links to all of them.
- * Every dataset is treated alike, however many copies of it there are.
- */
-function pruneLinks(candidates: RelationshipCandidate[]): RelationshipCandidate[] {
-  const links = candidates.filter((c): c is KeyLinkCandidate => c.kind === 'key-link')
-  const ranked = [...links].sort(compareLinks)
-  const taken = new Set<string>()
-  const kept = new Set<string>()
-  for (const link of ranked) {
-    const ends = [`${refId(link.from)}>${link.to.dataset}`, `${refId(link.to)}>${link.from.dataset}`]
-    if (ends.some((e) => taken.has(e))) continue
-    ends.forEach((e) => taken.add(e))
-    kept.add(link.id)
-  }
-  return candidates.filter((c) => c.kind !== 'key-link' || kept.has(c.id))
-}
-
-function compareLinks(a: KeyLinkCandidate, b: KeyLinkCandidate): number {
-  return (
-    STRENGTH_RANK[a.strength] - STRENGTH_RANK[b.strength] ||
-    Number(b.namesMatch) - Number(a.namesMatch) ||
-    b.fromCoverage - a.fromCoverage ||
-    b.sharedCount - a.sharedCount ||
-    compareText(a.id, b.id)
-  )
-}
-
+/** Similar datasets first (there are few), then overlaps with matching names and the most shared. */
 function compareCandidates(a: RelationshipCandidate, b: RelationshipCandidate): number {
-  if (a.kind !== b.kind) return a.kind === 'key-link' ? -1 : 1
-  if (a.kind === 'key-link' && b.kind === 'key-link') return compareLinks(a, b)
+  if (a.kind !== b.kind) return a.kind === 'similar-structure' ? -1 : 1
+  if (a.kind === 'key-link' && b.kind === 'key-link') {
+    return (
+      Number(b.namesMatch) - Number(a.namesMatch) ||
+      b.sharedCount - a.sharedCount ||
+      b.fromCoverage - a.fromCoverage ||
+      compareText(a.id, b.id)
+    )
+  }
   return compareText(a.id, b.id)
 }
 

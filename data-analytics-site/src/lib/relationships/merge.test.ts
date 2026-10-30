@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { profileDataset } from '../profiling'
-import { detectRelationships, type RelationshipInput } from './detect'
-import { isShown, mergeRelationships } from './merge'
+import { measureLink, measureOverlaps, type RelationshipInput } from './detect'
+import { isShown, mergeRelationships, usableLinks } from './merge'
 import { buildRelationshipRequest, workspaceKey, type DatasetSummary } from './request'
 import { RelationshipRequestSchema, reconcileAnalysis, type RelationshipAnalysis } from './schema'
 
@@ -37,7 +37,7 @@ const libs = input(
     ['L-4', 'Page Station'],
   ],
 )
-const candidates = detectRelationships([staff, libs])
+const candidates = measureOverlaps([staff, libs])
 const summaries: DatasetSummary[] = [staff, libs].map((d) => ({
   key: d.key,
   fileName: d.fileName,
@@ -161,49 +161,65 @@ describe('reconcileAnalysis', () => {
 })
 
 describe('mergeRelationships', () => {
-  it('shows value evidence on its own when the AI has not run', () => {
+  const analysis: RelationshipAnalysis = {
+    summary: 'Linked by library code.',
+    links: [
+      {
+        candidateId: linkId,
+        from: { dataset: 'staff', column: 'Library ID' },
+        to: { dataset: 'libs', column: 'LibraryID' },
+        verdict: 'likely',
+        description: 'Each staff row is for one library.',
+      },
+      {
+        candidateId: '',
+        from: { dataset: 'staff', column: 'Staff Type' },
+        to: { dataset: 'libs', column: 'Name' },
+        verdict: 'possible',
+        description: 'Maybe the type names a library.',
+      },
+    ],
+    similarDatasets: [],
+    questions: [],
+  }
+
+  it('draws nothing from measurements alone, before Claude has run', () => {
     const view = mergeRelationships(candidates, null)
-    expect(view.links[0]).toMatchObject({
-      id: linkId,
-      source: 'values',
-      verdict: null,
-      description: null,
-    })
+    expect(view.links).toEqual([])
     expect(view.summary).toBeNull()
   })
 
-  it('adds AI verdicts and descriptions, and AI-only links', () => {
-    const analysis: RelationshipAnalysis = {
-      summary: 'Linked by library code.',
-      links: [
-        {
-          candidateId: linkId,
-          from: { dataset: 'staff', column: 'Library ID' },
-          to: { dataset: 'libs', column: 'LibraryID' },
-          verdict: 'likely',
-          description: 'Each staff row is for one library.',
-        },
-        {
-          candidateId: '',
-          from: { dataset: 'staff', column: 'Staff Type' },
-          to: { dataset: 'libs', column: 'Name' },
-          verdict: 'unlikely',
-          description: 'Probably unrelated.',
-        },
-      ],
-      similarDatasets: [],
-      questions: [],
-    }
-    const view = mergeRelationships(candidates, analysis)
-    expect(view.links.find((l) => l.id === linkId)).toMatchObject({
+  it("draws Claude's links with the measured overlap behind each", () => {
+    const measure = (from: (typeof analysis.links)[0]['from'], to: typeof from) =>
+      measureLink([staff, libs], from, to)
+    const view = mergeRelationships(candidates, analysis, [], [], measure)
+    expect(view.links.map((l) => l.id)).toEqual([linkId, 'staff:Staff Type->libs:Name'])
+    expect(view.links[0]).toMatchObject({
+      source: 'ai',
       verdict: 'likely',
       description: 'Each staff row is for one library.',
       cardinality: 'many-to-one',
+      evidence: { sharedCount: 3 },
     })
-    const aiOnly = view.links.find((l) => l.source === 'ai')!
-    expect(aiOnly).toMatchObject({ cardinality: null, evidence: null, verdict: 'unlikely' })
-    expect(isShown(aiOnly)).toBe(false)
+    // Claude's own idea, which the values don't back up: shown with an empty measurement.
+    expect(view.links[1]).toMatchObject({ cardinality: null, evidence: { sharedCount: 0 } })
     expect(view.summary).toBe('Linked by library code.')
+  })
+
+  it('hides links Claude judged unlikely', () => {
+    const unlikely = {
+      ...analysis,
+      links: [{ ...analysis.links[0], verdict: 'unlikely' as const }],
+    }
+    expect(isShown(mergeRelationships(candidates, unlikely).links[0])).toBe(false)
+  })
+
+  it('lets Ask your data use confirmed links and likely or possible ones, never rejected ones', () => {
+    const rejected = [
+      { kind: 'link' as const, from: analysis.links[1].from, to: analysis.links[1].to },
+    ]
+    const view = mergeRelationships(candidates, analysis, [], rejected)
+    expect(usableLinks(view).map((l) => l.id)).toEqual([linkId])
   })
 })
 

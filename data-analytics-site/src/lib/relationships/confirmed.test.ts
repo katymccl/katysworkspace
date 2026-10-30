@@ -12,7 +12,7 @@ import {
   withoutRelationship,
   type ConfirmedRelationship,
 } from './confirmed'
-import { detectRelationships, type RelationshipInput } from './detect'
+import { measureOverlaps, type RelationshipInput } from './detect'
 import { asConfirmation, isShown, mergeRelationships } from './merge'
 import { buildRelationshipRequest } from './request'
 import { RelationshipRequestSchema, type RelationshipAnalysis } from './schema'
@@ -116,7 +116,22 @@ const libs = input(
     ['L-3', 'Old Friend'],
   ],
 )
-const candidates = detectRelationships([staff, libs])
+const candidates = measureOverlaps([staff, libs])
+/** Claude's analysis listing the Library ID link as likely. */
+const likely: RelationshipAnalysis = {
+  summary: '',
+  links: [
+    {
+      candidateId: 'staff:Library ID->libs:LibraryID',
+      from: { dataset: 'staff', column: 'Library ID' },
+      to: { dataset: 'libs', column: 'LibraryID' },
+      verdict: 'likely',
+      description: 'Each row is for one library.',
+    },
+  ],
+  similarDatasets: [],
+  questions: [],
+}
 
 describe('mergeRelationships with confirmations', () => {
   it('marks confirmed links, whichever direction they were confirmed in', () => {
@@ -220,17 +235,17 @@ describe('buildRelationshipRequest with confirmations', () => {
 describe('rejected relationships', () => {
   const staffLink = link('staff', 'Library ID', 'libs', 'LibraryID')
 
-  it('hides links marked not related, even strong ones', () => {
-    const view = mergeRelationships(candidates, null, [], [staffLink])
+  it('hides links marked not related, even ones Claude finds likely', () => {
+    const view = mergeRelationships(candidates, likely, [], [staffLink])
     const l = view.links.find((x) => x.from.column === 'Library ID')!
-    expect(l).toMatchObject({ rejected: true, confirmed: false, strength: 'strong' })
+    expect(l).toMatchObject({ rejected: true, confirmed: false, verdict: 'likely' })
     expect(isShown(l)).toBe(false)
   })
 
   it('matches rejections in either direction', () => {
     const view = mergeRelationships(
       candidates,
-      null,
+      likely,
       [],
       [link('libs', 'LibraryID', 'staff', 'Library ID')],
     )

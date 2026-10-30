@@ -1,6 +1,7 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import { Check, Sparkles, X } from 'lucide-react'
 import type { DiagramLink, DiagramSimilarity } from '../../lib/relationships/merge'
+import type { PeriodGrain } from '../../lib/relationships/periods'
 import { formatPercent } from '../profile/format'
 import { cardinalityLabel, linkConfidence, type Confidence } from './linkStyle'
 
@@ -16,11 +17,19 @@ interface RelationshipListProps {
   onToggleRejected: (item: DiagramLink | DiagramSimilarity) => void
 }
 
+const PERIOD_TEXT: Record<PeriodGrain, string> = {
+  date: 'dates',
+  month: 'months',
+  quarter: 'quarters',
+  year: 'years',
+  'month-name': 'month names',
+}
+
 const CONFIDENCE_TEXT: Record<Confidence, string> = {
   confirmed: 'Confirmed',
-  firm: 'Strong',
+  firm: 'Likely',
   tentative: 'Possible',
-  faint: 'Weak',
+  faint: 'Unlikely',
   rejected: 'Not related',
 }
 
@@ -142,17 +151,21 @@ export function RelationshipList({
               <span className="text-xs text-slate-500">{cardinalityLabel(l.cardinality)}</span>
             )}
           </>,
-          l.evidence
-            ? `${l.evidence.sharedCount.toLocaleString('en-US')} shared value${l.evidence.sharedCount === 1 ? '' : 's'}: ` +
-                `${formatPercent(l.evidence.fromCoverage)} of ${l.from.column} found in ${l.to.column}, ` +
-                `${formatPercent(l.evidence.toCoverage)} the other way` +
-                (l.evidence.namesMatch ? ' · names match' : '') +
-                (l.evidence.sharedExamples.length > 0
-                  ? ` · e.g. ${l.evidence.sharedExamples.slice(0, 3).join(', ')}`
-                  : '')
-            : l.source === 'ai'
-              ? 'Suggested by Claude from what the columns mean; no shared values were found.'
-              : 'Confirmed by you. No shared values are found between these columns right now.',
+          l.evidence && l.evidence.sharedCount > 0 ? (
+            `${l.evidence.sharedCount.toLocaleString('en-US')} shared value${l.evidence.sharedCount === 1 ? '' : 's'}: ` +
+            `${formatPercent(l.evidence.fromCoverage)} of ${l.from.column} found in ${l.to.column}, ` +
+            `${formatPercent(l.evidence.toCoverage)} the other way` +
+            (l.evidence.period ? ` · matched as ${PERIOD_TEXT[l.evidence.period]}` : '') +
+            (l.evidence.sharedExamples.length > 0
+              ? ` · e.g. ${l.evidence.sharedExamples.slice(0, 3).join(', ')}`
+              : '')
+          ) : (
+            // A link the values don't back up: worth checking before relying on it.
+            <span className="text-amber-700">
+              No shared values found between these columns
+              {l.source === 'ai' ? '; Claude suggested it from what the columns mean.' : '.'}
+            </span>
+          ),
           `the link from ${nameOf(l.from.dataset)} ${l.from.column} to ${nameOf(l.to.dataset)} ${l.to.column}`,
         ),
       )}

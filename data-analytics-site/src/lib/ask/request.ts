@@ -1,6 +1,5 @@
 import { postToAi, type AiOutcome } from '../ai/post'
-import { isConfirmed, type ConfirmedRelationship } from '../relationships/confirmed'
-import type { RelationshipCandidate } from '../relationships/detect'
+import type { DiagramLink } from '../relationships/merge'
 import type { DatasetSummary } from '../relationships/request'
 import { OUTPUT_LIMITS, REQUEST_LIMITS } from '../understanding/schema'
 import {
@@ -19,37 +18,25 @@ import {
 
 /**
  * Builds the request: the question, dataset summaries (definitions, profile basics and a few
- * example values per column, never the rows) and the links that can bring datasets together.
- *
- * Links are the user's confirmed ones plus those found in the values, minus any marked "not
- * related". Weak value matches are left out, so Claude isn't tempted to match on coincidences.
+ * example values per column, never the rows) and the links that can bring datasets together:
+ * those the user confirmed or drew and those Claude found likely or possible (see `usableLinks`).
  */
 export function buildAskRequest(
   question: string,
   datasets: readonly DatasetSummary[],
-  candidates: readonly RelationshipCandidate[],
-  confirmed: readonly ConfirmedRelationship[] = [],
-  rejected: readonly ConfirmedRelationship[] = [],
+  usable: readonly DiagramLink[],
   previousQuestions: readonly string[] = [],
 ): AskRequest {
   const t = (s: string, max: number = REQUEST_LIMITS.maxTextLength) =>
     s.length > max ? s.slice(0, max) : s
 
-  const links: AskRequest['links'] = []
-  const confirmedLinks = confirmed.filter((c) => c.kind === 'link')
-  for (const c of candidates) {
-    if (c.kind !== 'key-link') continue
-    const r: ConfirmedRelationship = { kind: 'link', from: c.from, to: c.to }
-    if (isConfirmed(rejected, r)) continue
-    const isUserConfirmed = isConfirmed(confirmedLinks, r)
-    if (!isUserConfirmed && c.strength === 'weak') continue
-    links.push({ from: c.from, to: c.to, cardinality: c.cardinality, confirmed: isUserConfirmed })
-  }
-  // Confirmed links the values didn't show: how often values repeat is unknown, so say so.
-  for (const c of confirmedLinks) {
-    if (links.some((l) => isConfirmed([{ kind: 'link', from: l.from, to: l.to }], c))) continue
-    links.push({ from: c.from, to: c.to, cardinality: 'many-to-many', confirmed: true })
-  }
+  const links: AskRequest['links'] = usable.slice(0, ASK_LIMITS.maxLinks).map((l) => ({
+    from: l.from,
+    to: l.to,
+    // Columns that share no values say nothing about repeats, so assume the worst.
+    cardinality: l.cardinality ?? 'many-to-many',
+    confirmed: l.confirmed,
+  }))
 
   return {
     question: question.trim().slice(0, ASK_LIMITS.maxQuestionLength),
@@ -94,11 +81,9 @@ export function buildAskRequest(
 /** The same summaries and links as a question, for asking Claude what to ask. */
 export function buildSuggestRequest(
   datasets: readonly DatasetSummary[],
-  candidates: readonly RelationshipCandidate[],
-  confirmed: readonly ConfirmedRelationship[] = [],
-  rejected: readonly ConfirmedRelationship[] = [],
+  usable: readonly DiagramLink[],
 ): SuggestQuestionsRequest {
-  const { datasets: summaries, links } = buildAskRequest('', datasets, candidates, confirmed, rejected)
+  const { datasets: summaries, links } = buildAskRequest('', datasets, usable)
   return { datasets: summaries, links }
 }
 

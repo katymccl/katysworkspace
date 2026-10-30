@@ -9,6 +9,7 @@ import type { CsvRow } from '../parseCsv'
 import { classifyValue, isMissing } from '../profiling'
 import { parseDate } from '../profiling/values'
 import { normaliseValue } from '../relationships/detect'
+import { periodColumn, periodKey } from '../relationships/periods'
 import type { DateBucket, FilterOp, PlanRef, QueryPlan } from './schema'
 
 export interface QueryTable {
@@ -41,6 +42,8 @@ export type QueryOutcome = { ok: true; result: QueryResult } | { ok: false; mess
 
 /** Joins that multiply rows past this are stopped rather than freezing the page. */
 export const MAX_JOINED_ROWS = 500_000
+/** Rows looked at to tell whether a join column holds periods. */
+const PERIOD_SAMPLE_ROWS = 10_000
 
 /** One row of the base dataset with the matching row (if any) of each joined dataset. */
 type Combined = Record<string, CsvRow | undefined>
@@ -126,9 +129,18 @@ function joinRows(
   column: string,
   table: QueryTable,
 ): { ok: true; rows: Combined[]; unmatched: number; repeated: number } | { ok: false } {
+  // Two time columns of the same kind match by period, so `Jan 2024` meets `2024-01`.
+  const sample = (values: unknown[]) => new Set(values.slice(0, PERIOD_SAMPLE_ROWS))
+  const period = periodColumn(column, sample(table.rows.map((r) => r[column])))
+  const shared =
+    period !== null && periodColumn(on.column, sample(rows.map((r) => cell(r, on)))) === period
+      ? period
+      : null
+  const keyOf = (value: unknown) => (shared ? periodKey(value, shared) : normaliseValue(value))
+
   const index = new Map<string, CsvRow[]>()
   for (const r of table.rows) {
-    const key = normaliseValue(r[column])
+    const key = keyOf(r[column])
     if (key === null) continue
     const list = index.get(key)
     if (list) list.push(r)
@@ -138,7 +150,7 @@ function joinRows(
   let unmatched = 0
   let repeated = 0
   for (const row of rows) {
-    const key = normaliseValue(cell(row, on))
+    const key = keyOf(cell(row, on))
     const matches = key === null ? undefined : index.get(key)
     if (!matches) {
       unmatched++

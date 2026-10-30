@@ -1,7 +1,7 @@
 /**
- * Combines value-based candidates, the AI's judgement and the user's confirmations into what the
- * diagram and list show. Pure. Without an AI analysis, every candidate is shown on its value
- * evidence alone; confirmations always win.
+ * Combines Claude's analysis and the user's decisions into what the diagram and list show, with
+ * the measured overlap behind each line. Pure. Only Claude's links and the user's confirmed or
+ * drawn links are drawn: measurements alone never are. Confirmations always win.
  */
 import { isConfirmed, relationshipId, type ConfirmedRelationship } from './confirmed'
 import type {
@@ -10,7 +10,6 @@ import type {
   KeyLinkCandidate,
   RelationshipCandidate,
   SimilarStructureCandidate,
-  Strength,
 } from './detect'
 import type { RelationshipAnalysis, Verdict } from './schema'
 
@@ -18,16 +17,13 @@ export interface DiagramLink {
   id: string
   from: ColumnRef
   to: ColumnRef
-  /** From the values when there is evidence; null for links without value evidence. */
+  /** From the measured values; null when the columns share no values. */
   cardinality: Cardinality | null
-  /**
-   * `values`: found in the data (maybe also judged by AI). `ai`: suggested by the AI only.
-   * `user`: confirmed by the user, with no current value evidence or AI suggestion.
-   */
-  source: 'values' | 'ai' | 'user'
-  strength: Strength | null
+  /** `ai`: listed by Claude (and maybe confirmed since). `user`: confirmed or drawn by the user. */
+  source: 'ai' | 'user'
+  /** How the two columns' values overlap, measured in the browser; null if a column isn't open. */
   evidence: KeyLinkCandidate | null
-  /** The AI's judgement, when it has run. */
+  /** Claude's judgement, for links it listed. */
   verdict: Verdict | null
   description: string | null
   /** The user has confirmed this relationship. */
@@ -41,8 +37,6 @@ export interface DiagramSimilarity {
   datasets: [string, string]
   sharedColumns: string[]
   similarity: number
-  /** Nearly identical column sets are strong evidence; partial overlap is moderate. */
-  strength: Strength
   verdict: Verdict | null
   description: string | null
   confirmed: boolean
@@ -56,74 +50,57 @@ export interface RelationshipView {
   questions: RelationshipAnalysis['questions']
 }
 
+/**
+ * The links and similar datasets to show. `measure` gives the overlap of two columns that aren't
+ * among the measured candidates (such as a link the user drew between columns sharing nothing).
+ */
 export function mergeRelationships(
   candidates: readonly RelationshipCandidate[],
   analysis: RelationshipAnalysis | null,
   confirmed: readonly ConfirmedRelationship[] = [],
   rejected: readonly ConfirmedRelationship[] = [],
+  measure: (from: ColumnRef, to: ColumnRef) => KeyLinkCandidate | null = () => null,
 ): RelationshipView {
-  const linkRejected = (from: ColumnRef, to: ColumnRef) =>
-    isConfirmed(rejected, { kind: 'link', from, to })
-  const judged = new Map(
-    (analysis?.links ?? []).filter((l) => l.candidateId).map((l) => [l.candidateId, l]),
-  )
-  const judgedSimilar = new Map((analysis?.similarDatasets ?? []).map((s) => [s.candidateId, s]))
-  const linkConfirmed = (from: ColumnRef, to: ColumnRef) =>
-    isConfirmed(confirmed, { kind: 'link', from, to })
+  const overlaps = candidates.filter((c): c is KeyLinkCandidate => c.kind === 'key-link')
+  const evidenceFor = (from: ColumnRef, to: ColumnRef) =>
+    overlaps.find((o) => sameLink(o, { from, to })) ?? measure(from, to)
+  const decided = (list: readonly ConfirmedRelationship[], from: ColumnRef, to: ColumnRef) =>
+    isConfirmed(list, { kind: 'link', from, to })
 
-  const links: DiagramLink[] = candidates
-    .filter((c): c is KeyLinkCandidate => c.kind === 'key-link')
-    .map((c) => ({
-      id: c.id,
-      from: c.from,
-      to: c.to,
-      cardinality: c.cardinality,
-      source: 'values',
-      strength: c.strength,
-      evidence: c,
-      verdict: judged.get(c.id)?.verdict ?? null,
-      description: judged.get(c.id)?.description ?? null,
-      confirmed: linkConfirmed(c.from, c.to),
-      rejected: linkRejected(c.from, c.to),
-    }))
+  const links: DiagramLink[] = []
+  const add = (
+    from: ColumnRef,
+    to: ColumnRef,
+    source: DiagramLink['source'],
+    judged: { verdict: Verdict; description: string } | null,
+  ) => {
+    if (links.some((l) => sameLink(l, { from, to }))) return
+    const evidence = evidenceFor(from, to)
+    // Point the way the values do (many → one) when they say; otherwise as given.
+    const [f, t] = evidence ? [evidence.from, evidence.to] : [from, to]
+    links.push({
+      id: evidence?.id ?? relationshipId({ kind: 'link', from: f, to: t }),
+      from: f,
+      to: t,
+      cardinality: evidence && evidence.sharedCount > 0 ? evidence.cardinality : null,
+      source,
+      evidence,
+      verdict: judged?.verdict ?? null,
+      description: judged?.description ?? null,
+      confirmed: decided(confirmed, f, t),
+      rejected: decided(rejected, f, t),
+    })
+  }
 
   for (const l of analysis?.links ?? []) {
-    if (l.candidateId) continue
-    const link: ConfirmedRelationship = { kind: 'link', from: l.from, to: l.to }
-    if (links.some((existing) => sameLink(existing, link))) continue
-    links.push({
-      id: relationshipId(link),
-      from: l.from,
-      to: l.to,
-      cardinality: null,
-      source: 'ai',
-      strength: null,
-      evidence: null,
-      verdict: l.verdict,
-      description: l.description,
-      confirmed: linkConfirmed(l.from, l.to),
-      rejected: linkRejected(l.from, l.to),
-    })
+    // Claude names a candidate by id; its own from and to are kept for links without one.
+    const candidate = l.candidateId ? overlaps.find((o) => o.id === l.candidateId) : undefined
+    add(candidate?.from ?? l.from, candidate?.to ?? l.to, 'ai', l)
   }
+  // Confirmed links stay on the diagram whatever Claude said.
+  for (const c of confirmed) if (c.kind === 'link') add(c.from, c.to, 'user', null)
 
-  // Confirmed links stay on the diagram even when nothing currently suggests them.
-  for (const c of confirmed) {
-    if (c.kind !== 'link' || links.some((l) => sameLink(l, c))) continue
-    links.push({
-      id: relationshipId(c),
-      from: c.from,
-      to: c.to,
-      cardinality: null,
-      source: 'user',
-      strength: null,
-      evidence: null,
-      verdict: null,
-      description: null,
-      confirmed: true,
-      rejected: false,
-    })
-  }
-
+  const judgedSimilar = new Map((analysis?.similarDatasets ?? []).map((s) => [s.candidateId, s]))
   const similar: DiagramSimilarity[] = candidates
     .filter((c): c is SimilarStructureCandidate => c.kind === 'similar-structure')
     .map((c) => ({
@@ -131,12 +108,13 @@ export function mergeRelationships(
       datasets: c.datasets,
       sharedColumns: c.sharedColumns,
       similarity: c.similarity,
-      strength: c.similarity >= 0.9 ? 'strong' : 'moderate',
       verdict: judgedSimilar.get(c.id)?.verdict ?? null,
       description: judgedSimilar.get(c.id)?.description ?? null,
       confirmed: isConfirmed(confirmed, { kind: 'similar', datasets: c.datasets }),
       rejected: isConfirmed(rejected, { kind: 'similar', datasets: c.datasets }),
     }))
+    // Like links, similar datasets are only shown once Claude or the user has said so.
+    .filter((s) => s.verdict !== null || s.confirmed || s.rejected)
 
   return {
     links,
@@ -157,7 +135,7 @@ function sameLink(a: { from: ColumnRef; to: ColumnRef }, b: { from: ColumnRef; t
 
 /**
  * Shown by default: confirmed relationships always; otherwise everything except what the user
- * marked "not related" or the AI judged unlikely.
+ * marked "not related" or Claude judged unlikely.
  */
 export function isShown(item: {
   verdict: Verdict | null
@@ -169,6 +147,16 @@ export function isShown(item: {
 }
 
 /** The confirmation that a drawn item stands for, for toggling it. */
+/**
+ * Links Ask your data may match rows along: confirmed ones, and Claude's likely or possible ones,
+ * never those marked "not related".
+ */
+export function usableLinks(view: RelationshipView): DiagramLink[] {
+  return view.links.filter(
+    (l) => !l.rejected && (l.confirmed || l.verdict === 'likely' || l.verdict === 'possible'),
+  )
+}
+
 export function asConfirmation(item: DiagramLink | DiagramSimilarity): ConfirmedRelationship {
   return 'datasets' in item
     ? { kind: 'similar', datasets: item.datasets }

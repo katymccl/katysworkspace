@@ -153,6 +153,38 @@ describe('runQuery', () => {
     )
   })
 
+  it('joins time columns by period, however each is written', () => {
+    const outcome = runQuery(
+      {
+        ...plan({
+          joins: [{ dataset: 'targets', on: { dataset: 'sales', column: 'Month' }, column: 'Period' }],
+        }),
+        from: 'sales',
+        select: [
+          { column: { dataset: 'sales', column: 'Month' }, label: 'Month' },
+          { column: { dataset: 'targets', column: 'Target' }, label: 'Target' },
+        ],
+      },
+      new Map([
+        ['sales', { name: 'Sales', rows: [{ Month: '2024-01' }, { Month: '2024-02' }] }],
+        [
+          'targets',
+          {
+            name: 'Targets',
+            rows: [
+              { Period: 'Jan 2024', Target: '200' },
+              { Period: 'February 2024', Target: '210' },
+            ],
+          },
+        ],
+      ]),
+    )
+    expect(outcome.ok && outcome.result.rows).toEqual([
+      ['2024-01', '200'],
+      ['2024-02', '210'],
+    ])
+  })
+
   it('stops joins that multiply rows too far', () => {
     const many = Array.from({ length: 1000 }, () => ({ k: 'x' }))
     const outcome = runQuery(

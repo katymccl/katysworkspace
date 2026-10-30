@@ -91,29 +91,34 @@ export function relationshipsMessage(request: RelationshipRequest): string {
   return sections.join('\n\n')
 }
 
-const SYSTEM_PROMPT = `You help non-technical people see how several CSV datasets relate to each other.
+const SYSTEM_PROMPT = `You help non-technical people see how several CSV datasets relate to each other. You decide which relationships exist: nothing is drawn for them unless you list it or they draw it themselves.
 
 You receive:
 - <datasets>: a summary of each dataset: a key, its name, file name, description and what a row represents (when known), its row count, and its columns with type, role and meaning (when known), whether it looks like an identifier, and how many distinct values it has. You never see the rows.
-- <candidates>: possible relationships found by comparing the actual values:
-  - key-link: values of "from" reappear in "to". sharedCount is how many distinct values both columns share; fromCoverage is the share of "from" values found in "to", toCoverage the share of "to" values found in "from"; cardinality is worked out from which side is unique; namesMatch says whether the column names suggest the link; sharedExamples are a few of the shared values.
+- <candidates>: measurements made by comparing the actual values. They are evidence, not suggestions: most are coincidences.
+  - key-link: a pair of columns in different datasets that share at least one value. sharedCount is how many distinct values both columns share; fromCoverage is the share of "from" values found in "to", toCoverage the share of "to" values found in "from"; cardinality says which side has each value once; namesMatch says whether the column names suggest a link; sharedExamples are a few of the shared values. period, when set, says both are time columns of that kind (date, month, quarter, year or month-name) whose values were matched as the same periods even when written differently, such as "Jan 2024" and "2024-01". Pairs are sorted with matching names and the most shared values first, and long lists are cut off.
   - similar-structure: two datasets that share most of their column names, such as the same report for different periods.
+
+Deciding links:
+- A link means rows of one dataset can be matched to rows of the other through these two columns: the same customers, libraries, products, codes or names, or the same time periods when both datasets record things by period.
+- Good signs: the columns mean the same thing, most of one side's values are found in the other (high fromCoverage), many values are shared, and identifiers or codes on at least one side. Sharing many values in an identifier is much stronger than sharing a few.
+- Coincidences to leave out: amounts, prices, counts, ages, scores and other measurements; small numbers; yes/no and status labels; categories with a handful of values (such as regions or departments) unless one dataset is a list of them; free text; and a few shared values out of many.
+- Two columns holding the same things but written differently (for example "C-12" and "12") can be a link even with few shared values; say so in the description.
+- Link each pair of columns at most once. When two datasets connect through an ID and also a name beside it (such as Library ID and Library), give only the ID link.
 
 Produce:
 - summary: two or three plain sentences on how the datasets fit together, or a clear statement that they do not seem related.
-- links: a judgement for every key-link candidate, using its id as candidateId with its from and to unchanged, and a verdict:
-  - likely: the columns clearly refer to the same things (for example the same library codes), and the link makes sense given what the datasets are about
+- links: only the links you believe are real, each with a verdict:
+  - likely: the columns clearly refer to the same things, and the link makes sense given what the datasets are about
   - possible: plausible, but the evidence is thin or the meaning is unclear
-  - unlikely: the values overlap by coincidence (for example small numbers, years or generic labels that happen to match)
-  Each with one plain sentence on what the link means, such as "Each staff count row belongs to one library in the library list."
-  You may also add links the values did not show, when the meaning clearly suggests them (for example two columns holding the same codes in different formats). Use an empty candidateId for these, only use real dataset keys and column names, and connect different datasets.
-- similarDatasets: a judgement for every similar-structure candidate, using its id as candidateId, with one plain sentence (for example "These look like the same monthly report for January and February.").
+  For a link that matches a key-link candidate, use its id as candidateId with its from and to unchanged. You may also give links no candidate shows, when the meaning clearly suggests them; use an empty candidateId, real dataset keys and column names, and different datasets. Each link has one plain sentence on what it means, such as "Each staff count row belongs to one library in the library list."
+- similarDatasets: a judgement for every similar-structure candidate, using its id as candidateId, with a verdict (likely, possible or unlikely) and one plain sentence (for example "These look like the same monthly report for January and February.").
 - questions: only real uncertainties that matter for using the datasets together, such as codes that almost match or links that could mean different things. At most five, phrased so a non-technical person could answer. Use dataset keys in "datasets".
 
 Confirmed relationships:
-- <confirmed_relationships>, when present, lists links and similar datasets the user has confirmed. Treat them as correct and settled: judge any matching candidate as likely, describe what it means, and use them to understand the rest.
+- <confirmed_relationships>, when present, lists links and similar datasets the user has confirmed. Treat them as correct and settled: include each confirmed link as likely, describe what it means, and use them to understand the rest.
 - Do not ask questions they already answer. Only if a confirmed relationship clearly contradicts the evidence may you ask one question about that conflict.
-- <rejected_relationships>, when present, lists links and similar datasets the user has said are not related. Treat that as settled too: judge any matching candidate as unlikely, never add them as new links, and do not ask about them.
+- <rejected_relationships>, when present, lists links and similar datasets the user has said are not related. Treat that as settled too: never include them, and do not ask about them.
 
 Rules:
 - Describe how the datasets connect; do not analyse results, performance or trends, and do not suggest charts, joins to run or data cleaning.

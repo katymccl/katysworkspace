@@ -1,6 +1,12 @@
 import { useCallback, useMemo, useState } from 'react'
 import type { Dataset } from '../lib/datasets'
-import { detectRelationships, type RelationshipCandidate } from '../lib/relationships/detect'
+import {
+  measureLink,
+  measureOverlaps,
+  type ColumnRef,
+  type RelationshipCandidate,
+  type RelationshipInput,
+} from '../lib/relationships/detect'
 import {
   applicableConfirmations,
   isConfirmed,
@@ -30,8 +36,9 @@ export interface AnalysisState {
 }
 
 /**
- * The workspace's relationships: value-based candidates computed in the browser, plus an AI
- * analysis on request. Only the latest open version of each dataset takes part.
+ * The workspace's relationships: Claude's analysis on request, decided from overlaps measured in
+ * the browser, plus the user's own decisions. Only the latest open version of each dataset takes
+ * part.
  */
 export function useRelationships(
   datasets: readonly Dataset[],
@@ -42,18 +49,12 @@ export function useRelationships(
     workspace.map((d) => ({ datasetId: d.datasetId, content: d.fingerprints.content })),
   )
 
-  const candidates: RelationshipCandidate[] = useMemo(
-    () =>
-      detectRelationships(
-        workspace.map((d) => ({
-          key: d.datasetId,
-          fileName: d.fileName,
-          columns: d.columns,
-          rows: d.rows,
-          profile: d.profile,
-        })),
-      ),
-    [workspace],
+  const inputs = useMemo(() => relationshipInputs(workspace), [workspace])
+  // Evidence for Claude, and for the links it or the user picks; never drawn on its own.
+  const candidates: RelationshipCandidate[] = useMemo(() => measureOverlaps(inputs), [inputs])
+  const measure = useCallback(
+    (from: ColumnRef, to: ColumnRef) => measureLink(inputs, from, to),
+    [inputs],
   )
 
   // Every decision the user has made (confirmed, or "not related"), saved in this browser; only
@@ -133,8 +134,15 @@ export function useRelationships(
   }, [key, workspace, candidates, confirmed, rejected, resolve, state.result])
 
   const view: RelationshipView = useMemo(
-    () => mergeRelationships(candidates, state.result?.analysis ?? null, confirmed, rejected),
-    [candidates, state.result, confirmed, rejected],
+    () =>
+      mergeRelationships(
+        candidates,
+        state.result?.analysis ?? null,
+        confirmed,
+        rejected,
+        measure,
+      ),
+    [candidates, state.result, confirmed, rejected, measure],
   )
 
   return {
@@ -147,6 +155,17 @@ export function useRelationships(
     confirm,
     layoutKey: key,
   }
+}
+
+/** The open datasets as relationship measuring takes them. */
+export function relationshipInputs(workspace: readonly Dataset[]): RelationshipInput[] {
+  return workspace.map((d) => ({
+    key: d.datasetId,
+    fileName: d.fileName,
+    columns: d.columns,
+    rows: d.rows,
+    profile: d.profile,
+  }))
 }
 
 /** Keeps the most recently opened copy of each dataset, in the order they were opened. */

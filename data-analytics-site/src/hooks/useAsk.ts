@@ -14,10 +14,16 @@ import {
   loadConfirmedRelationships,
   loadRejectedRelationships,
 } from '../lib/relationships/confirmed'
-import { detectRelationships, type RelationshipCandidate } from '../lib/relationships/detect'
+import {
+  measureLink,
+  measureOverlaps,
+  type RelationshipCandidate,
+} from '../lib/relationships/detect'
+import { mergeRelationships, usableLinks } from '../lib/relationships/merge'
 import { workspaceKey } from '../lib/relationships/request'
+import { loadAnalysis } from '../lib/relationships/store'
 import type { ResolvedUnderstanding, UnderstandingError } from '../lib/understanding'
-import { latestVersions, summarise } from './useRelationships'
+import { latestVersions, relationshipInputs, summarise } from './useRelationships'
 
 export interface AskEntry {
   id: string
@@ -50,7 +56,7 @@ export function useAsk(
   resolve: (d: Dataset) => ResolvedUnderstanding,
 ) {
   const [entries, setEntries] = useState<AskEntry[]>([])
-  // Finding links reads every value, so do it once per set of dataset versions.
+  // Measuring overlaps reads every value, so do it once per set of dataset versions.
   const candidatesCache = useRef<{ key: string; candidates: RelationshipCandidate[] } | null>(null)
 
   const workspace = useMemo(() => latestVersions(datasets), [datasets])
@@ -62,28 +68,26 @@ export function useAsk(
     [workspace],
   )
 
-  /** Summaries, links and confirmations for the open datasets: what every request is built on. */
+  /**
+   * Summaries and links for the open datasets: what every request is built on. The links are the
+   * same as on the relationships page: the user's, and Claude's latest likely or possible ones.
+   */
   const context = useCallback(() => {
+    const inputs = relationshipInputs(workspace)
     if (candidatesCache.current?.key !== key) {
-      candidatesCache.current = {
-        key,
-        candidates: detectRelationships(
-          workspace.map((d) => ({
-            key: d.datasetId,
-            fileName: d.fileName,
-            columns: d.columns,
-            rows: d.rows,
-            profile: d.profile,
-          })),
-        ),
-      }
+      candidatesCache.current = { key, candidates: measureOverlaps(inputs) }
     }
     const openColumns = new Map(workspace.map((d) => [d.datasetId, new Set(d.columns)]))
+    const view = mergeRelationships(
+      candidatesCache.current.candidates,
+      loadAnalysis(key)?.analysis ?? null,
+      applicableConfirmations(loadConfirmedRelationships(), openColumns),
+      applicableConfirmations(loadRejectedRelationships(), openColumns),
+      (from, to) => measureLink(inputs, from, to),
+    )
     return {
       summaries: workspace.map((d) => summarise(d, resolve(d))),
-      candidates: candidatesCache.current.candidates,
-      confirmed: applicableConfirmations(loadConfirmedRelationships(), openColumns),
-      rejected: applicableConfirmations(loadRejectedRelationships(), openColumns),
+      links: usableLinks(view),
     }
   }, [key, workspace, resolve])
 
@@ -91,17 +95,10 @@ export function useAsk(
     async (id: string, question: string, previousQuestions: string[]) => {
       const update = (change: Partial<AskEntry>) =>
         setEntries((list) => list.map((e) => (e.id === id ? { ...e, ...change } : e)))
-      const { summaries, candidates, confirmed, rejected } = context()
+      const { summaries, links } = context()
       const names = Object.fromEntries(summaries.map((s) => [s.key, s.name]))
 
-      const request = buildAskRequest(
-        question,
-        summaries,
-        candidates,
-        confirmed,
-        rejected,
-        previousQuestions,
-      )
+      const request = buildAskRequest(question, summaries, links, previousQuestions)
       const response = await requestAnswer(request)
       if (!response.ok) {
         update({ status: 'error', error: response.error, names })
@@ -158,10 +155,8 @@ export function useAsk(
     const forKey = key
     const previous = suggested.questions
     setSuggestState({ key: forKey, status: 'loading', questions: previous, error: null })
-    const { summaries, candidates, confirmed, rejected } = context()
-    const response = await requestQuestions(
-      buildSuggestRequest(summaries, candidates, confirmed, rejected),
-    )
+    const { summaries, links } = context()
+    const response = await requestQuestions(buildSuggestRequest(summaries, links))
     if (!response.ok) {
       setSuggestState({ key: forKey, status: 'error', questions: previous, error: response.error })
       return
