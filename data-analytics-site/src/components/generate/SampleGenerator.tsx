@@ -140,8 +140,8 @@ export function SampleGenerator({
           <Sparkles className="h-4 w-4 text-violet-500" aria-hidden /> Generate a sample dataset
         </h3>
         <p className="mt-0.5 text-sm text-slate-500">
-          Describe the data you want and Claude will make up realistic, fictional rows. Base it on
-          one of your datasets to get data that fits with it, such as a list of the people, places or
+          Try out Sema! Describe the data you want and Claude will generate realistic, fictional
+          rows. Base it on one of your datasets to get data that fits with it, such as a list of the people, places or
           things it mentions.
         </p>
       </div>

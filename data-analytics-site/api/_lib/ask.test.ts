@@ -67,7 +67,7 @@ const answer: AskAnswer = {
     sort: [{ label: 'Orders', direction: 'descending' }],
     limit: 0,
   },
-  chart: { type: 'bar', x: 'Region', y: 'Orders' },
+  chart: { type: 'bar', x: 'Region', y: 'Orders', by: '' },
 }
 
 let ipCounter = 0

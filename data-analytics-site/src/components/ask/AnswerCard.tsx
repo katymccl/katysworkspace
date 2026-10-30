@@ -1,5 +1,6 @@
 import { AlertCircle, Download, HelpCircle, Info, Loader2, Sparkles } from 'lucide-react'
 import type { AskEntry } from '../../hooks/useAsk'
+import { requestedChart, resolveChart } from '../../lib/ask/chart'
 import { describePlan } from '../../lib/ask/describe'
 import type { QueryResult } from '../../lib/ask/execute'
 import { toCsvText } from '../../lib/generate/client'
@@ -98,6 +99,9 @@ function Result({
   question: string
 }) {
   const single = result.rows.length === 1 && result.columns.every((c) => c.numeric)
+  const drawn = resolveChart(question, chart, result)
+  // Headline figures don't need a chart unless the question asked for one.
+  const showChart = drawn !== null && (!single || requestedChart(question) !== null)
   return (
     <div className="space-y-3">
       {result.notes.length > 0 && (
@@ -117,21 +121,22 @@ function Result({
         </p>
       ) : single ? (
         // A headline figure (or a few) reads better as numbers than as a one-row table.
-        <dl className="flex flex-wrap gap-4">
-          {result.columns.map((c, i) => (
-            <div key={c.label} className="min-w-32 rounded-lg border border-slate-200 px-4 py-3">
-              <dt className="text-xs text-slate-500">{c.label}</dt>
-              <dd className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">
-                {formatCell(result.rows[0][i])}
-              </dd>
-            </div>
-          ))}
-        </dl>
+        <>
+          <dl className="flex flex-wrap gap-4">
+            {result.columns.map((c, i) => (
+              <div key={c.label} className="min-w-32 rounded-lg border border-slate-200 px-4 py-3">
+                <dt className="text-xs text-slate-500">{c.label}</dt>
+                <dd className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">
+                  {formatCell(result.rows[0][i])}
+                </dd>
+              </div>
+            ))}
+          </dl>
+          {showChart && drawn && <ResultChart chart={drawn} />}
+        </>
       ) : (
         <>
-          {chart.type !== 'none' && (
-            <ResultChart result={result} type={chart.type} x={chart.x} y={chart.y} />
-          )}
+          {showChart && drawn && <ResultChart chart={drawn} />}
           <ResultTable result={result} />
         </>
       )}
