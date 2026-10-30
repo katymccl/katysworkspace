@@ -115,12 +115,12 @@ export async function analyse(
         }
         return {
           status: 200,
-          body: {
+          body: withinResponseLimit({
             answer: reconcileReport(parsed.data),
             code: code.slice(0, FULL_LIMITS.maxCodeBlocks),
             model: response.model,
             generatedAt: new Date().toISOString(),
-          },
+          }),
         }
       }
 
@@ -141,6 +141,37 @@ export async function analyse(
   } catch (error) {
     return mapError(error, 'analyse')
   }
+}
+
+/** Vercel functions can't send more than 4.5 MB back; stay well under it. */
+export const MAX_RESPONSE_BYTES = 4_000_000
+
+/**
+ * Halves the result table (and drops the code) until the reply fits Vercel's response size
+ * limit, saying so in the notes. Ordinary answers are far smaller and pass through unchanged.
+ */
+export function withinResponseLimit(result: AnalyseResult): AnalyseResult {
+  let out = result
+  const size = (r: AnalyseResult) => new TextEncoder().encode(JSON.stringify(r)).length
+  if (size(out) > MAX_RESPONSE_BYTES) out = { ...out, code: [] }
+  const total = out.answer.rows.length
+  while (size(out) > MAX_RESPONSE_BYTES && out.answer.rows.length > 1) {
+    out = { ...out, answer: { ...out.answer, rows: out.answer.rows.slice(0, Math.floor(out.answer.rows.length / 2)) } }
+  }
+  if (out.answer.rows.length < total) {
+    const shown = out.answer.rows.length
+    out = {
+      ...out,
+      answer: {
+        ...out.answer,
+        notes: [
+          ...out.answer.notes,
+          `The table was too large to send in full, so only the first ${shown.toLocaleString('en-US')} of ${total.toLocaleString('en-US')} rows are shown.`,
+        ],
+      },
+    }
+  }
+  return out
 }
 
 /** Adds the code Claude ran in this response: shell commands, and files it wrote. */

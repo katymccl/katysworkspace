@@ -14,7 +14,7 @@ vi.mock('@anthropic-ai/sdk', async (importOriginal) => {
   return { ...actual, default: FakeAnthropic }
 })
 
-const { handleAnalyse, analyse, analyseMessage, collectCode, ANALYSE_DEADLINE_MS } = await import(
+const { handleAnalyse, analyse, analyseMessage, collectCode, withinResponseLimit, ANALYSE_DEADLINE_MS } = await import(
   './analyse.js'
 )
 
@@ -190,5 +190,27 @@ describe('collectCode', () => {
       into,
     )
     expect(into).toEqual(['pip list', '# a.py\nprint(1)'])
+  })
+})
+
+describe('withinResponseLimit', () => {
+  const big = (rows: number, cell: string) => ({
+    answer: { ...report, rows: Array.from({ length: rows }, () => [cell, 1]) },
+    code: ['print(1)'],
+    model: 'm',
+    generatedAt: 't',
+  })
+
+  it('leaves ordinary answers alone', () => {
+    const small = big(10, 'West')
+    expect(withinResponseLimit(small)).toBe(small)
+  })
+
+  it('trims rows (and code) to fit, and says so', () => {
+    const out = withinResponseLimit(big(1000, 'x'.repeat(8000)))
+    expect(out.code).toEqual([])
+    expect(out.answer.rows.length).toBeLessThan(1000)
+    expect(JSON.stringify(out).length).toBeLessThanOrEqual(4_000_000)
+    expect(out.answer.notes.at(-1)).toMatch(/only the first \d+ of 1,000 rows are shown/)
   })
 })
