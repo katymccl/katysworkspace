@@ -14,6 +14,8 @@ import { Wordmark } from './components/Wordmark'
 import { useAsk } from './hooks/useAsk'
 import { useUnderstanding } from './hooks/useUnderstanding'
 import { toDataset, type Dataset, type View } from './lib/datasets'
+import { deleteStoredDataset, fromStored, loadStoredDatasets, saveDataset } from './lib/persist/datasets'
+import { loadWorkspaces } from './lib/workspaces'
 import { cleanedCsvData } from './lib/clean/version'
 import { matchDataset, recordUpload, type MatchReason } from './lib/identity'
 import type { BaseSource } from './lib/generate/base'
@@ -62,6 +64,39 @@ function App() {
 
   const [notices, setNotices] = useState<Notice[]>([])
   const [menuOpen, setMenuOpen] = useState(false)
+
+  // The open workspace's id, once loaded. Saving waits for it, so uploads made while the saved
+  // datasets are still loading land in the right workspace.
+  const workspaceReady = useRef<Promise<string> | null>(null)
+  const { restore } = understanding
+  const whenWorkspace = (work: (id: string) => Promise<unknown>) => {
+    void workspaceReady.current?.then(work)
+  }
+
+  useEffect(() => {
+    let live = true
+    const loading = loadWorkspaces().then(async ({ currentId, persistent }) => {
+      const stored = await loadStoredDatasets(currentId)
+      if (!live) return currentId
+      const restored = stored.map((s) => fromStored(s, loadDismissedIdentifiers(s.datasetId)))
+      restore(restored)
+      // Anything uploaded while loading stays, after the saved datasets.
+      setDatasets((prev) => [...restored, ...prev.filter((d) => !restored.some((r) => r.id === d.id))])
+      if (!persistent) {
+        setNotices([
+          notice(
+            'error',
+            "This browser isn't letting sema save data, so your datasets will be gone when you close the tab.",
+          ),
+        ])
+      }
+      return currentId
+    })
+    workspaceReady.current = loading
+    return () => {
+      live = false
+    }
+  }, [restore])
   const menuButtonRef = useRef<HTMLButtonElement>(null)
 
   function closeMenu() {
@@ -130,6 +165,7 @@ function App() {
     }
     saveRegistry(registry)
     understanding.restore(added)
+    whenWorkspace((id) => Promise.all(added.map((d) => saveDataset(d, id))))
 
     // Each upload replaces the previous upload's messages.
     setNotices([...messages, ...errors.map((message) => notice('error', message))])
@@ -143,6 +179,7 @@ function App() {
   function handleRemove(id: string) {
     const remaining = datasets.filter((d) => d.id !== id)
     setDatasets(remaining)
+    void deleteStoredDataset(id)
     setView(remaining.length > 0 ? { kind: 'dataset', id: remaining[0].id } : { kind: 'upload' })
   }
 
@@ -163,8 +200,10 @@ function App() {
     const cleaned = {
       ...toDataset(data, identity, loadDismissedIdentifiers(old.datasetId)),
       id: old.id,
+      addedAt: old.addedAt,
     }
     understanding.restore([cleaned])
+    whenWorkspace((workspace) => saveDataset(cleaned, workspace))
     setDatasets((prev) => prev.map((d) => (d.id === id ? cleaned : d)))
     setNotices([notice('success', message)])
   }

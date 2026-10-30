@@ -9,6 +9,8 @@ export interface Dataset extends CsvData {
   datasetId: string
   /** How this upload was matched to datasetId. */
   matchedBy: MatchReason
+  /** When it was added to its workspace; keeps the list in order across reloads. */
+  addedAt: string
   /**
    * Computed once on upload; each dataset is profiled independently. Identifier flags the user
    * removed are applied on top.
@@ -31,5 +33,11 @@ export function toDataset(
   dismissedIdentifiers: readonly string[] = [],
 ): Dataset {
   const profile = withDismissedIdentifiers(profileDataset(data), dismissedIdentifiers)
-  return { ...data, ...identity, id: crypto.randomUUID(), profile }
+  return {
+    ...data,
+    ...identity,
+    id: crypto.randomUUID(),
+    addedAt: new Date().toISOString(),
+    profile,
+  }
 }
