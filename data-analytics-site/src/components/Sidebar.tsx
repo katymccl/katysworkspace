@@ -23,6 +23,8 @@ interface SidebarProps {
   onClose?: () => void
   /** Display name for a dataset; defaults to its file name. */
   nameOf?: (dataset: Dataset) => string
+  /** The workspace switcher, shown above everything else. */
+  workspaceSwitcher?: ReactNode
 }
 
 export function Sidebar({
@@ -33,6 +35,7 @@ export function Sidebar({
   onSelect,
   onClose,
   nameOf = (d) => d.fileName,
+  workspaceSwitcher,
 }: SidebarProps) {
   return (
     <aside className="flex h-full w-64 shrink-0 flex-col border-r border-slate-200 bg-white">
@@ -55,6 +58,8 @@ export function Sidebar({
           </button>
         )}
       </div>
+
+      {workspaceSwitcher}
 
       <nav className="flex-1 overflow-y-auto px-3 pb-4">
         <div className="mb-1">

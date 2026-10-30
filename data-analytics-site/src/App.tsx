@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import { CleanPanel } from './components/clean/CleanPanel'
 import { Menu } from 'lucide-react'
 import { AskPage } from './components/ask/AskPage'
@@ -8,6 +8,7 @@ import { SampleGenerator } from './components/generate/SampleGenerator'
 import { Home } from './components/Home'
 import { Notices, type Notice } from './components/Notices'
 import { Sidebar } from './components/Sidebar'
+import { WorkspaceSwitcher } from './components/WorkspaceSwitcher'
 import { ColumnDefinition } from './components/understanding/ColumnDefinition'
 import { UnderstandingPanel } from './components/understanding/UnderstandingPanel'
 import { Wordmark } from './components/Wordmark'
@@ -15,9 +16,17 @@ import { useAsk } from './hooks/useAsk'
 import { useUnderstanding } from './hooks/useUnderstanding'
 import { toDataset, type Dataset, type View } from './lib/datasets'
 import { deleteStoredDataset, fromStored, loadStoredDatasets, saveDataset } from './lib/persist/datasets'
-import { loadWorkspaces } from './lib/workspaces'
+import {
+  DEFAULT_WORKSPACE_NAME,
+  deleteWorkspace,
+  loadWorkspaces,
+  newWorkspace,
+  saveCurrentWorkspaceId,
+  saveWorkspace,
+  type Workspace,
+} from './lib/workspaces'
 import { cleanedCsvData } from './lib/clean/version'
-import { matchDataset, recordUpload, type MatchReason } from './lib/identity'
+import { matchInWorkspace, recordUpload, type MatchReason } from './lib/identity'
 import type { BaseSource } from './lib/generate/base'
 import type { CsvData, CsvRow } from './lib/parseCsv'
 import { withDismissedIdentifiers } from './lib/profiling'
@@ -58,31 +67,52 @@ function notice(kind: Notice['kind'], message: string): Notice {
 function App() {
   const understanding = useUnderstanding()
   const [datasets, setDatasets] = useState<Dataset[]>([])
-  const ask = useAsk(datasets, understanding.resolve)
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([])
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null)
+  const ask = useAsk(datasets, understanding.resolve, workspaceId)
   const [view, setView] = useState<View>({ kind: 'home' })
   const [datasetsOpen, setDatasetsOpen] = useState(true)
 
   const [notices, setNotices] = useState<Notice[]>([])
   const [menuOpen, setMenuOpen] = useState(false)
 
-  // The open workspace's id, once loaded. Saving waits for it, so uploads made while the saved
-  // datasets are still loading land in the right workspace.
+  // The open workspace's id, once loaded. Uploads made while it loads wait for it, so they land in
+  // the right workspace.
   const workspaceReady = useRef<Promise<string> | null>(null)
+  /** The workspace whose datasets are being shown; a later switch wins over a slower earlier one. */
+  const showing = useRef<string | null>(null)
   const { restore } = understanding
-  const whenWorkspace = (work: (id: string) => Promise<unknown>) => {
-    void workspaceReady.current?.then(work)
-  }
+
+  /**
+   * Opens a workspace and its saved datasets. With `keepUnsaved`, datasets added while it loaded
+   * stay after the saved ones. Returns the datasets, or null if another workspace was opened since.
+   */
+  const showWorkspace = useCallback(
+    async (id: string, keepUnsaved = false): Promise<Dataset[] | null> => {
+      showing.current = id
+      workspaceReady.current = Promise.resolve(id)
+      saveCurrentWorkspaceId(id)
+      setWorkspaceId(id)
+      const stored = await loadStoredDatasets(id)
+      if (showing.current !== id) return null
+      const restored = stored.map((s) => fromStored(s, loadDismissedIdentifiers(s.datasetId)))
+      restore(restored)
+      setDatasets((prev) =>
+        keepUnsaved
+          ? [...restored, ...prev.filter((d) => !restored.some((r) => r.id === d.id))]
+          : restored,
+      )
+      return restored
+    },
+    [restore],
+  )
 
   useEffect(() => {
     let live = true
-    const loading = loadWorkspaces().then(async ({ currentId, persistent }) => {
-      const stored = await loadStoredDatasets(currentId)
-      if (!live) return currentId
-      const restored = stored.map((s) => fromStored(s, loadDismissedIdentifiers(s.datasetId)))
-      restore(restored)
-      // Anything uploaded while loading stays, after the saved datasets.
-      setDatasets((prev) => [...restored, ...prev.filter((d) => !restored.some((r) => r.id === d.id))])
-      if (!persistent) {
+    workspaceReady.current = loadWorkspaces().then(async (loaded) => {
+      if (!live) return loaded.currentId
+      setWorkspaces(loaded.workspaces)
+      if (!loaded.persistent) {
         setNotices([
           notice(
             'error',
@@ -90,13 +120,62 @@ function App() {
           ),
         ])
       }
-      return currentId
+      await showWorkspace(loaded.currentId, true)
+      return loaded.currentId
     })
-    workspaceReady.current = loading
     return () => {
       live = false
     }
-  }, [restore])
+  }, [showWorkspace])
+
+  const currentWorkspace = workspaces.find((w) => w.id === workspaceId) ?? null
+
+  async function switchWorkspace(id: string) {
+    if (id === workspaceId) return
+    setNotices([])
+    const shown = await showWorkspace(id)
+    if (shown) setView(shown.length > 0 ? { kind: 'dataset', id: shown[0].id } : { kind: 'upload' })
+  }
+
+  async function createWorkspace(name: string) {
+    const w = newWorkspace(name, crypto.randomUUID(), new Date().toISOString())
+    await saveWorkspace(w)
+    setWorkspaces((list) => [...list, w])
+    await switchWorkspace(w.id)
+    setNotices([notice('success', `Created the workspace "${w.name}".`)])
+  }
+
+  function updateWorkspace(id: string, change: Partial<Omit<Workspace, 'id'>>) {
+    setWorkspaces((list) =>
+      list.map((w) => {
+        if (w.id !== id) return w
+        const next = { ...w, ...change }
+        void saveWorkspace(next)
+        return next
+      }),
+    )
+  }
+
+  /** Deletes a workspace and its saved datasets, opening another (or a fresh one) if needed. */
+  async function removeWorkspace(id: string) {
+    const gone = workspaces.find((w) => w.id === id)
+    const deleted = await deleteWorkspace(id)
+    let rest = workspaces.filter((w) => w.id !== id)
+    if (rest.length === 0) {
+      const fresh = newWorkspace(DEFAULT_WORKSPACE_NAME, crypto.randomUUID(), new Date().toISOString())
+      await saveWorkspace(fresh)
+      rest = [fresh]
+    }
+    setWorkspaces(rest)
+    if (id === workspaceId) await switchWorkspace(rest[0].id)
+    setNotices([
+      notice(
+        'success',
+        `Deleted the workspace "${gone?.name ?? ''}" and its ${deleted.length} dataset${deleted.length === 1 ? '' : 's'}.`,
+      ),
+    ])
+  }
+
   const menuButtonRef = useRef<HTMLButtonElement>(null)
 
   function closeMenu() {
@@ -116,7 +195,9 @@ function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [menuOpen])
 
-  function handleUpload(loaded: CsvData[], errors: string[]) {
+  async function handleUpload(loaded: CsvData[], errors: string[]) {
+    const ws = await workspaceReady.current
+    if (!ws) return
     let registry = loadRegistry()
     const now = new Date().toISOString()
     const added: Dataset[] = []
@@ -126,7 +207,7 @@ function App() {
     for (const data of loaded) {
       const sameVersion = (d: Dataset, datasetId: string) =>
         d.datasetId === datasetId && d.fingerprints.content === data.fingerprints.content
-      let identity = matchDataset(registry, data, () => crypto.randomUUID())
+      let identity = matchInWorkspace(registry, data, ws, () => crypto.randomUUID())
       // Already open under another name (a match remembered from before uploads were told apart
       // by file name): this file is a copy, not the same dataset again.
       const openElsewhere = [...datasets, ...added].some(
@@ -140,7 +221,7 @@ function App() {
           copyOf: identity.datasetId,
         }
       }
-      registry = recordUpload(registry, identity, data.fileName, now)
+      registry = recordUpload(registry, identity, data.fileName, now, ws)
       if (identity.copyOf) copySavedUnderstanding(identity.copyOf, identity.datasetId)
 
       // The exact same version is already open: show it instead of opening a second copy.
@@ -165,7 +246,7 @@ function App() {
     }
     saveRegistry(registry)
     understanding.restore(added)
-    whenWorkspace((id) => Promise.all(added.map((d) => saveDataset(d, id))))
+    for (const d of added) void saveDataset(d, ws)
 
     // Each upload replaces the previous upload's messages.
     setNotices([...messages, ...errors.map((message) => notice('error', message))])
@@ -189,21 +270,24 @@ function App() {
    */
   async function handleCleaned(id: string, columns: string[], rows: CsvRow[], message: string) {
     const old = datasets.find((d) => d.id === id)
-    if (!old) return
+    const ws = await workspaceReady.current
+    if (!old || !ws) return
     const data = await cleanedCsvData(old, columns, rows)
     const identity = {
       datasetId: old.datasetId,
       fingerprints: data.fingerprints,
       matchedBy: 'new-version' as const,
     }
-    saveRegistry(recordUpload(loadRegistry(), identity, data.fileName, new Date().toISOString()))
+    saveRegistry(
+      recordUpload(loadRegistry(), identity, data.fileName, new Date().toISOString(), ws),
+    )
     const cleaned = {
       ...toDataset(data, identity, loadDismissedIdentifiers(old.datasetId)),
       id: old.id,
       addedAt: old.addedAt,
     }
     understanding.restore([cleaned])
-    whenWorkspace((workspace) => saveDataset(cleaned, workspace))
+    void saveDataset(cleaned, ws)
     setDatasets((prev) => prev.map((d) => (d.id === id ? cleaned : d)))
     setNotices([notice('success', message)])
   }
@@ -240,6 +324,17 @@ function App() {
     datasetsOpen,
     onToggleDatasets: () => setDatasetsOpen((open) => !open),
     nameOf: (d: Dataset) => understanding.resolve(d).name.value ?? d.fileName,
+    workspaceSwitcher: (
+      <WorkspaceSwitcher
+        workspaces={workspaces}
+        current={currentWorkspace}
+        datasetCount={datasets.length}
+        onSwitch={(id) => void switchWorkspace(id)}
+        onCreate={(name) => void createWorkspace(name)}
+        onRename={(id, name) => updateWorkspace(id, { name })}
+        onDelete={(id) => void removeWorkspace(id)}
+      />
+    ),
   }
 
   return (

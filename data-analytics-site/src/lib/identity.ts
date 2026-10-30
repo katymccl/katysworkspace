@@ -22,6 +22,11 @@ export interface DatasetRecord {
   contentFingerprints: string[]
   firstSeenAt: string
   lastSeenAt: string
+  /**
+   * The workspace the dataset belongs to. Records from before workspaces have none, and are
+   * claimed by the first workspace that uploads a matching file.
+   */
+  workspaceId?: string
 }
 
 export type MatchReason =
@@ -121,6 +126,7 @@ export function recordUpload(
   identity: DatasetIdentity,
   fileName: string,
   now: string,
+  workspaceId: string,
 ): DatasetRecord[] {
   const existing = known.find((r) => r.datasetId === identity.datasetId)
   const versions = [
@@ -134,6 +140,28 @@ export function recordUpload(
     contentFingerprints: versions,
     firstSeenAt: existing?.firstSeenAt ?? now,
     lastSeenAt: now,
+    workspaceId,
   }
   return [...known.filter((r) => r.datasetId !== identity.datasetId), record]
+}
+
+/**
+ * matchDataset within one workspace: only that workspace's datasets (and records from before
+ * workspaces) can be uploaded again or get new versions. A file whose exact contents belong to a
+ * dataset in another workspace becomes a separate dataset here, recorded as a copy so it starts
+ * from that dataset's saved descriptions.
+ */
+export function matchInWorkspace(
+  known: readonly DatasetRecord[],
+  upload: { fileName: string; fingerprints: DatasetFingerprints },
+  workspaceId: string,
+  newId: () => string,
+): DatasetIdentity {
+  const here = known.filter((r) => r.workspaceId === undefined || r.workspaceId === workspaceId)
+  const identity = matchDataset(here, upload, newId)
+  if (identity.matchedBy !== 'new-dataset') return identity
+  const elsewhere = [...known]
+    .sort((a, b) => (a.lastSeenAt < b.lastSeenAt ? 1 : -1))
+    .find((r) => r.contentFingerprints.includes(upload.fingerprints.content))
+  return elsewhere ? { ...identity, matchedBy: 'copy', copyOf: elsewhere.datasetId } : identity
 }
