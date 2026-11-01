@@ -1,6 +1,7 @@
 import type { CsvRow } from '../parseCsv'
 import { standardiseDate, type DayMonthOrder } from './dates'
 import type { CleanIssues } from './detect'
+import { effectiveRenames, removeColumns, renameColumns } from './rename'
 import { applySplits, splitColumns, type Split } from './split'
 
 /** Replaces several spellings of one value in a column, e.g. "NY" and "N.Y." with "New York". */
@@ -20,8 +21,12 @@ export interface CleanEdits {
   replacements: Replacement[]
   /** Date columns to rewrite as `YYYY-MM-DD`, reading `01/04/2024`-style values in this order. */
   dates: { column: string; order: DayMonthOrder }[]
-  /** Columns to split into new ones; applied after every other change. */
+  /** Columns to split into new ones; applied after every change but renaming. */
   splits: Split[]
+  /** Columns to remove; applied after splits, before renaming. */
+  removeColumns: string[]
+  /** New names by current name; applied last, to columns that are still there. */
+  renames: Record<string, string>
 }
 
 export const NO_EDITS: CleanEdits = {
@@ -31,6 +36,8 @@ export const NO_EDITS: CleanEdits = {
   replacements: [],
   dates: [],
   splits: [],
+  removeColumns: [],
+  renames: {},
 }
 
 export const cellKey = (row: number, column: string) => `${row}\u0000${column}`
@@ -125,15 +132,18 @@ export function summariseEdits(
   return { changedValues, removedRows: dropped.size }
 }
 
-/** The cleaned dataset: every change applied, then columns split. Pure. */
+/**
+ * The cleaned dataset: every change applied, then columns split, removed and renamed. Also returns
+ * the renames that took effect, so what refers to the old names can follow. Pure.
+ */
 export function applyAll(
   columns: readonly string[],
   rows: readonly CsvRow[],
   issues: CleanIssues,
   edits: CleanEdits,
-): { columns: string[]; rows: CsvRow[] } {
-  return {
-    columns: splitColumns(columns, edits.splits),
-    rows: applySplits(applyEdits(rows, issues, edits), edits.splits),
-  }
+): { columns: string[]; rows: CsvRow[]; renames: Record<string, string> } {
+  const split = splitColumns(columns, edits.splits)
+  const kept = removeColumns(split, applySplits(applyEdits(rows, issues, edits), edits.splits), edits.removeColumns)
+  const renames = effectiveRenames(edits.renames, kept.columns)
+  return { ...renameColumns(kept.columns, kept.rows, renames), renames }
 }

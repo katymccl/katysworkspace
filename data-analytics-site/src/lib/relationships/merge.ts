@@ -148,7 +148,7 @@ export function isShown(item: {
 
 /** The confirmation that a drawn item stands for, for toggling it. */
 /**
- * Links Ask your data may match rows along: confirmed ones, and Claude's likely or possible ones,
+ * Links Ask with AI may match rows along: confirmed ones, and Claude's likely or possible ones,
  * never those marked "not related".
  */
 export function usableLinks(view: RelationshipView): DiagramLink[] {

@@ -22,6 +22,9 @@ export const CONFIDENCE_LEVELS = ['high', 'medium', 'low'] as const
 export type Confidence = (typeof CONFIDENCE_LEVELS)[number]
 
 /** Limits on what the browser may send, so the endpoint can't be used as a general AI proxy. */
+/** The most possible values a glossary term lists (and that are sent to Claude with a column). */
+export const MAX_TERM_VALUES = 50
+
 export const REQUEST_LIMITS = {
   maxColumns: 300,
   maxTextLength: 200,

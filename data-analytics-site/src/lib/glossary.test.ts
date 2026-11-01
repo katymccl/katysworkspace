@@ -1,8 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   addColumnTerm,
   columnDragData,
+  columnValues,
   findTerm,
+  loadGlossary,
   readColumnDrag,
   removeTerm,
   sortedTerms,
@@ -24,6 +26,7 @@ const term = (overrides: Partial<GlossaryTerm> = {}): GlossaryTerm => ({
   description: 'The code of a library branch.',
   role: 'identifier',
   aliases: [],
+  values: [],
   from: null,
   updatedAt: '2026-01-01T00:00:00Z',
   ...overrides,
@@ -57,6 +60,7 @@ describe('editing the glossary', () => {
       description: 'Branch code',
       role: null,
       aliases: [],
+      values: [],
       from: { datasetId: 'ds', column: 'Library ID' },
       updatedAt: 'now',
     })
@@ -169,6 +173,15 @@ describe('glossary terms in requests to Claude', () => {
     profile: profileDataset({ columns: ['Library_ID'], rows }),
     columnDefinitions: new Map([
       ['Library_ID', { description: 'Branch code.', role: 'identifier' as const, glossaryTerm: 'Library ID' }],
+      [
+        'Age_group',
+        {
+          description: null,
+          role: 'category' as const,
+          glossaryTerm: 'Age group',
+          glossaryValues: ['Adult', 'Teen'],
+        },
+      ],
     ]),
   })
 
@@ -182,5 +195,47 @@ describe('glossary terms in requests to Claude', () => {
     const request = buildAskRequest('How many branches?', [summary('a')], [])
     expect(AskRequestSchema.safeParse(request).success).toBe(true)
     expect(request.datasets[0].columns[0]).toMatchObject({ glossaryTerm: 'Library ID' })
+    expect(request.datasets[0].columns[0]).not.toHaveProperty('glossaryValues')
+  })
+
+  it("tells Claude a term's possible values when answering questions", () => {
+    const withAge = { ...summary('a'), profile: profileDataset({ columns: ['Age_group'], rows: [{ Age_group: 'Adult' }] }) }
+    const request = buildAskRequest('How many teens?', [withAge], [])
+    expect(AskRequestSchema.safeParse(request).success).toBe(true)
+    expect(request.datasets[0].columns[0]).toMatchObject({ glossaryValues: ['Adult', 'Teen'] })
+  })
+})
+
+describe('possible values', () => {
+  const rows = [{ g: 'Teen' }, { g: ' Adult ' }, { g: 'Adult' }, { g: '' }, { g: 'Child' }, { g: 'Adult' }]
+
+  it("lists a category column's values, most common first", () => {
+    expect(columnValues(rows, 'g', 'category')).toEqual(['Adult', 'Teen', 'Child'])
+  })
+
+  it('lists nothing for other roles, or for columns with too many values to be a list', () => {
+    expect(columnValues(rows, 'g', 'identifier')).toEqual([])
+    const many = Array.from({ length: 60 }, (_, i) => ({ g: `v${i}` }))
+    expect(columnValues(many, 'g', 'category')).toEqual([])
+  })
+
+  it('fills a new term from a category column, and tidies values on edit', () => {
+    const { term: added } = addColumnTerm(
+      [],
+      { datasetId: 'ds', name: 'Age group', description: null, role: 'category', values: ['Adult', ' Teen '] },
+      'id1',
+      'now',
+    )
+    expect(added.values).toEqual(['Adult', 'Teen'])
+    const [edited] = updateTerm([added], 'id1', { values: ['Child', ' ', 'child', 'Adult'] }, 'later')
+    expect(edited.values).toEqual(['Child', 'Adult'])
+  })
+
+  it('reads terms saved before values existed', () => {
+    const { values: _, ...old } = term()
+    const saved = JSON.stringify([old])
+    vi.stubGlobal('localStorage', { getItem: (k: string) => (k === 'sema.v2:glossary:ws' ? saved : null) })
+    expect(loadGlossary('ws')[0].values).toEqual([])
+    vi.unstubAllGlobals()
   })
 })

@@ -190,6 +190,7 @@ export function summarise(d: Dataset, resolved: ResolvedUnderstanding): DatasetS
           description: c.description.value,
           role: c.role.value,
           glossaryTerm: c.glossaryTerm?.term ?? null,
+          glossaryValues: c.glossaryTerm?.values ?? [],
         },
       ]),
     ),

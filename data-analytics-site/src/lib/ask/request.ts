@@ -1,7 +1,7 @@
 import { postToAi, type AiOutcome } from '../ai/post'
 import type { DiagramLink } from '../relationships/merge'
 import type { DatasetSummary } from '../relationships/request'
-import { OUTPUT_LIMITS, REQUEST_LIMITS } from '../understanding/schema'
+import { MAX_TERM_VALUES, OUTPUT_LIMITS, REQUEST_LIMITS } from '../understanding/schema'
 import {
   SuggestQuestionsResultSchema,
   reconcileQuestions,
@@ -56,6 +56,11 @@ export function buildAskRequest(
           type: c.inferredType,
           ...(def?.role && { role: def.role }),
           ...(def?.glossaryTerm && { glossaryTerm: t(def.glossaryTerm) }),
+          ...(def?.glossaryValues?.length && {
+            glossaryValues: def.glossaryValues
+              .slice(0, MAX_TERM_VALUES)
+              .map((v) => t(v, REQUEST_LIMITS.maxValueLength)),
+          }),
           ...(def?.description && {
             description: t(def.description, OUTPUT_LIMITS.columnDescription),
           }),

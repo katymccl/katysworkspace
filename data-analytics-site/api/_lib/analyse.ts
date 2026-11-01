@@ -211,7 +211,7 @@ const SYSTEM_PROMPT = `You answer a non-technical person's questions about their
 
 You receive:
 - <files>: the uploaded files and the dataset key each holds.
-- <datasets>: each dataset's key, name, description and what a row represents (when known), its row count, and its columns with type, role and meaning (when known), how many distinct values each has, and a few example values. glossaryTerm, when present, is the term from the person's own glossary that the column follows; read the question's words in its terms.
+- <datasets>: each dataset's key, name, description and what a row represents (when known), its row count, and its columns with type, role and meaning (when known), how many distinct values each has, and a few example values. glossaryTerm, when present, is the term from the person's own glossary that the column follows; read the question's words in its terms. glossaryValues, when present, are the values the glossary says the column can take; use them to match the question's words to the data, and mention in notes any other values you find in the column.
 - <links>: pairs of columns in different datasets that hold the same things; confirmed means the person has said so. Use them to bring datasets together.
 - <previous_questions>, when present: earlier questions, so follow-ups such as "and by month?" make sense.
 - <question>: what the person wants to know.

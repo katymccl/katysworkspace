@@ -1,7 +1,9 @@
 import { z } from 'zod'
 import { headerWords } from './profiling/identifiers'
 import { STORAGE_PREFIX, readStored, writeStored } from './storage'
-import { COLUMN_ROLES, type ColumnRole } from './understanding/schema'
+import { COLUMN_ROLES, MAX_TERM_VALUES, type ColumnRole } from './understanding/schema'
+
+export { MAX_TERM_VALUES }
 
 /**
  * A workspace's data glossary: terms the user defines once (usually by dragging a column in), whose
@@ -16,6 +18,11 @@ export interface GlossaryTerm {
   role: ColumnRole | null
   /** Other names columns use for the same thing, e.g. `LibraryID`, `Branch code`. */
   aliases: string[]
+  /**
+   * The values a category term can take, e.g. `Adult`, `Teen`, `Child`; empty when not listed.
+   * Filled in from the column when a category column is added, and editable after.
+   */
+  values: string[]
   /** The column it was made from, if it was dragged in. */
   from: { datasetId: string; column: string } | null
   updatedAt: string
@@ -28,10 +35,46 @@ const GlossarySchema = z.array(
     description: z.string(),
     role: z.enum(COLUMN_ROLES).nullable(),
     aliases: z.array(z.string()),
+    // Terms saved before values existed have none.
+    values: z.array(z.string()).default([]),
     from: z.object({ datasetId: z.string(), column: z.string() }).nullable(),
     updatedAt: z.string(),
   }),
 )
+
+/** Values trimmed, without blanks or repeats (ignoring case), at most MAX_TERM_VALUES. */
+export function tidyValues(values: readonly string[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const raw of values) {
+    const v = raw.trim()
+    const key = v.toLowerCase()
+    if (v === '' || seen.has(key)) continue
+    seen.add(key)
+    out.push(v)
+  }
+  return out.slice(0, MAX_TERM_VALUES)
+}
+
+/**
+ * A category column's distinct values, most common first, for a new term's list; empty when the
+ * column isn't a category or has more than MAX_TERM_VALUES of them (then it's not really a list).
+ */
+export function columnValues(
+  rows: readonly Record<string, string>[],
+  column: string,
+  role: ColumnRole | null,
+): string[] {
+  if (role !== 'category') return []
+  const counts = new Map<string, number>()
+  for (const row of rows) {
+    const v = row[column]?.trim()
+    if (!v) continue
+    counts.set(v, (counts.get(v) ?? 0) + 1)
+    if (counts.size > MAX_TERM_VALUES) return []
+  }
+  return [...counts].sort((a, b) => b[1] - a[1]).map(([v]) => v)
+}
 
 /** How names are compared: by header words, so `Library ID`, `library_id` and `LibraryID` match. */
 export function termKey(name: string): string {
@@ -51,7 +94,13 @@ export function findTerm(terms: readonly GlossaryTerm[], columnName: string): Gl
  */
 export function addColumnTerm(
   terms: readonly GlossaryTerm[],
-  column: { datasetId: string; name: string; description: string | null; role: ColumnRole | null },
+  column: {
+    datasetId: string
+    name: string
+    description: string | null
+    role: ColumnRole | null
+    values?: readonly string[]
+  },
   id: string,
   now: string,
 ): { terms: GlossaryTerm[]; term: GlossaryTerm; added: boolean } {
@@ -63,17 +112,18 @@ export function addColumnTerm(
     description: column.description?.trim() ?? '',
     role: column.role,
     aliases: [],
+    values: tidyValues(column.values ?? []),
     from: { datasetId: column.datasetId, column: column.name },
     updatedAt: now,
   }
   return { terms: [...terms, term], term, added: true }
 }
 
-/** Replaces a term's editable parts, tidying its other names (trimmed, no repeats or blanks). */
+/** Replaces a term's editable parts, tidying its other names and values (trimmed, no repeats or blanks). */
 export function updateTerm(
   terms: readonly GlossaryTerm[],
   id: string,
-  change: Partial<Pick<GlossaryTerm, 'term' | 'description' | 'role' | 'aliases'>>,
+  change: Partial<Pick<GlossaryTerm, 'term' | 'description' | 'role' | 'aliases' | 'values'>>,
   now: string,
 ): GlossaryTerm[] {
   return terms.map((t) => {
@@ -90,6 +140,7 @@ export function updateTerm(
         seen.add(key)
         return true
       })
+    next.values = tidyValues(next.values)
     return next
   })
 }

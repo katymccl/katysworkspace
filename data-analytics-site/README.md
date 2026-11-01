@@ -43,9 +43,9 @@ are sent, via the server endpoint `api/understand.ts`; the API key stays on the 
 - `npm run dev` serves the endpoint through a Vite middleware; Vercel serves `api/understand.ts`.
 - Suggestions and your confirmed definitions are saved separately in the browser, per dataset.
 
-## Ask your data
+## Ask with AI
 
-"Ask your data" (in the sidebar) answers plain-English questions about the open workspace's
+"Ask with AI" (in the sidebar) answers plain-English questions about the open workspace's
 datasets, in one of two ways, set per workspace on the Ask page.
 
 **Full data (the default).** The workspace's CSVs are uploaded to Anthropic's Files API through

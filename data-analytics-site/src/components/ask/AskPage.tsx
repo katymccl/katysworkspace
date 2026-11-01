@@ -17,7 +17,7 @@ interface AskPageProps {
   onFullDataChange: (on: boolean) => void
 }
 
-/** "Ask your data": plain-English questions, answered from the open workspace's datasets. */
+/** "Ask with AI": plain-English questions, answered from the open workspace's datasets. */
 export function AskPage({
   datasets,
   nameOf,
@@ -89,7 +89,7 @@ export function AskPage({
           <button
             type="submit"
             disabled={!question.trim()}
-            aria-label="Ask"
+            aria-label="Ask Claude"
             className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-violet-600 text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2"
           >
             {ask.busy ? (

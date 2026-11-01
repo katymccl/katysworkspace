@@ -214,7 +214,7 @@ describe('mergeRelationships', () => {
     expect(isShown(mergeRelationships(candidates, unlikely).links[0])).toBe(false)
   })
 
-  it('lets Ask your data use confirmed links and likely or possible ones, never rejected ones', () => {
+  it('lets Ask with AI use confirmed links and likely or possible ones, never rejected ones', () => {
     const rejected = [
       { kind: 'link' as const, from: analysis.links[1].from, to: analysis.links[1].to },
     ]

@@ -11,7 +11,7 @@ export interface Workspace {
   id: string
   name: string
   createdAt: string
-  /** Whether Ask your data may upload this workspace's files for Claude to analyse in full. */
+  /** Whether Ask with AI may upload this workspace's files for Claude to analyse in full. */
   fullData: boolean
 }
 

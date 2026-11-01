@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { ChartPoint as Point, HeatmapChart, ResolvedChart } from '../../lib/ask/chart'
+import { ChartDownload } from '../ChartDownload'
 import { formatCell } from './format'
 
 /**
@@ -10,11 +11,13 @@ import { formatCell } from './format'
  */
 export function ResultChart({ chart }: { chart: ResolvedChart }) {
   const { x, y, notes } = chart
+  const figure = useRef<HTMLElement>(null)
+  const title = `${y} by ${x}${chart.type === 'heatmap' ? ` and ${chart.by}` : ''}`
   return (
-    <figure className="rounded-lg border border-slate-200 p-4">
-      <figcaption className="mb-3 text-xs font-medium text-slate-600">
-        {y} by {x}
-        {chart.type === 'heatmap' && ` and ${chart.by}`}
+    <figure ref={figure} className="rounded-lg border border-slate-200 p-4">
+      <figcaption className="mb-3 flex items-start justify-between gap-3 text-xs font-medium text-slate-600">
+        <span>{title}</span>
+        <ChartDownload target={figure} title={title} />
       </figcaption>
       {chart.type === 'heatmap' ? (
         <Heatmap chart={chart} />

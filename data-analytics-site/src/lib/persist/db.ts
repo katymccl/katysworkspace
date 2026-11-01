@@ -1,5 +1,5 @@
 /**
- * sema's IndexedDB database: workspaces, their datasets (rows included) and Ask your data history,
+ * sema's IndexedDB database: workspaces, their datasets (rows included) and Ask with AI history,
  * kept in this browser. localStorage holds the small things (descriptions, decisions); this holds
  * what's too big for it.
  *

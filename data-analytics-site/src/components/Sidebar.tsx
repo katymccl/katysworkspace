@@ -1,11 +1,14 @@
 import { useState, type ReactNode } from 'react'
 import {
   BookOpen,
+  ChartLine,
   ChevronDown,
   ChevronRight,
   Database,
   FileSpreadsheet,
+  House,
   Layers,
+  LayoutDashboard,
   MessageSquare,
   Plus,
   Sparkles,
@@ -29,6 +32,8 @@ interface SidebarProps {
   workspaceSwitcher?: ReactNode
   /** Terms in the open workspace's glossary. */
   glossaryCount?: number
+  /** Dashboards in the open workspace. */
+  dashboardCount?: number
   /** A column dropped onto the Glossary item. */
   onDropColumn?: (column: { datasetId: string; column: string }) => void
 }
@@ -43,6 +48,7 @@ export function Sidebar({
   nameOf = (d) => d.fileName,
   workspaceSwitcher,
   glossaryCount = 0,
+  dashboardCount = 0,
   onDropColumn,
 }: SidebarProps) {
   return (
@@ -72,17 +78,10 @@ export function Sidebar({
       <nav className="flex-1 overflow-y-auto px-3 pb-4">
         <div className="mb-1">
           <NavItem
-            icon={<MessageSquare className="h-4 w-4" />}
-            label="Ask your data"
-            active={view.kind === 'ask'}
-            disabled={datasets.length === 0}
-            onClick={() => onSelect({ kind: 'ask' })}
-          />
-          <GlossaryItem
-            count={glossaryCount}
-            active={view.kind === 'glossary'}
-            onClick={() => onSelect({ kind: 'glossary' })}
-            onDropColumn={onDropColumn}
+            icon={<House className="h-4 w-4" />}
+            label="Overview"
+            active={view.kind === 'overview'}
+            onClick={() => onSelect({ kind: 'overview' })}
           />
         </div>
         <button
@@ -141,6 +140,35 @@ export function Sidebar({
             </li>
           </ul>
         )}
+        <div className="mt-1 border-t border-slate-100 pt-1">
+          <GlossaryItem
+            count={glossaryCount}
+            active={view.kind === 'glossary'}
+            onClick={() => onSelect({ kind: 'glossary' })}
+            onDropColumn={onDropColumn}
+          />
+          <NavItem
+            icon={<ChartLine className="h-4 w-4" />}
+            label="Explore your data"
+            active={view.kind === 'explore'}
+            disabled={datasets.length === 0}
+            onClick={() => onSelect({ kind: 'explore' })}
+          />
+          <NavItem
+            icon={<MessageSquare className="h-4 w-4" />}
+            label="Ask with AI"
+            active={view.kind === 'ask'}
+            disabled={datasets.length === 0}
+            onClick={() => onSelect({ kind: 'ask' })}
+          />
+          <NavItem
+            icon={<LayoutDashboard className="h-4 w-4" />}
+            label="Dashboards"
+            active={view.kind === 'dashboards'}
+            onClick={() => onSelect({ kind: 'dashboards' })}
+            badge={dashboardCount > 0 ? dashboardCount : undefined}
+          />
+        </div>
       </nav>
     </aside>
   )

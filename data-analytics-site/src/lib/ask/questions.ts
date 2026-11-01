@@ -1,6 +1,6 @@
 /**
  * The contract for /api/questions: Claude suggests questions worth asking about the open datasets,
- * from the same summaries "Ask your data" sends (never the rows). Shared by the browser and the
+ * from the same summaries "Ask with AI" sends (never the rows). Shared by the browser and the
  * server, so it must only import `zod` and other server-safe schema files.
  */
 import { z } from 'zod'

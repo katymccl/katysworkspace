@@ -19,12 +19,13 @@ export interface GlossaryColumn {
   overridden: boolean
 }
 
-type TermChange = Partial<Pick<GlossaryTerm, 'term' | 'description' | 'role' | 'aliases'>>
+type TermFields = Pick<GlossaryTerm, 'term' | 'description' | 'role' | 'aliases' | 'values'>
+type TermChange = Partial<TermFields>
 
 interface GlossaryPageProps {
   terms: GlossaryTerm[]
   columns: GlossaryColumn[]
-  onAdd: (term: { term: string; description: string; role: ColumnRole | null }) => void
+  onAdd: (term: TermFields) => void
   onUpdate: (id: string, change: TermChange) => void
   onRemove: (id: string) => void
   onDropColumn: (column: { datasetId: string; column: string }) => void
@@ -49,7 +50,7 @@ export function GlossaryPage({
   const shown = sortedTerms(terms).filter(
     (t) =>
       q === '' ||
-      [t.term, t.description, ...t.aliases].some((text) => text.toLowerCase().includes(q)),
+      [t.term, t.description, ...t.aliases, ...t.values].some((text) => text.toLowerCase().includes(q)),
   )
 
   return (
@@ -89,7 +90,7 @@ export function GlossaryPage({
       {adding && (
         <TermForm
           submitLabel="Add term"
-          initial={{ term: '', description: '', role: null, aliases: [] }}
+          initial={{ term: '', description: '', role: null, aliases: [], values: [] }}
           onSubmit={(t) => {
             onAdd(t)
             setAdding(false)
@@ -184,6 +185,21 @@ function TermCard({
       ) : (
         <p className="text-sm text-slate-400 italic">No meaning yet.</p>
       )}
+      {term.values.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-slate-600">Possible values</p>
+          <ul className="flex flex-wrap gap-1.5" aria-label={`Possible values of ${term.term}`}>
+            {term.values.map((v) => (
+              <li
+                key={v}
+                className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-xs text-slate-700"
+              >
+                {v}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <p className="text-xs text-slate-500">
         {usedIn.length === 0
           ? 'No open dataset has a column with this name.'
@@ -221,15 +237,18 @@ function TermForm({
   onSubmit,
   onCancel,
 }: {
-  initial: Pick<GlossaryTerm, 'term' | 'description' | 'role' | 'aliases'>
+  initial: TermFields
   submitLabel: string
-  onSubmit: (t: { term: string; description: string; role: ColumnRole | null; aliases: string[] }) => void
+  onSubmit: (t: TermFields) => void
   onCancel: () => void
 }) {
   const [term, setTerm] = useState(initial.term)
   const [description, setDescription] = useState(initial.description)
   const [role, setRole] = useState<ColumnRole | ''>(initial.role ?? '')
   const [aliases, setAliases] = useState(initial.aliases.join(', '))
+  const [values, setValues] = useState(initial.values.join('\n'))
+  // A list of values fits categories; it stays visible for any term that already has one.
+  const showValues = role === 'category' || values.trim() !== ''
   const id = useId()
   const field =
     'mt-1 w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm font-normal text-slate-800 focus:border-violet-500 focus:ring-2 focus:ring-violet-200 focus:outline-none'
@@ -242,6 +261,7 @@ function TermForm({
       description: description.trim(),
       role: role || null,
       aliases: aliases.split(',').map((a) => a.trim()).filter(Boolean),
+      values: values.split('\n').map((v) => v.trim()).filter(Boolean),
     })
   }
 
@@ -292,6 +312,19 @@ function TermForm({
           className={field}
         />
       </label>
+      {showValues && (
+        <label className="block text-xs font-medium text-slate-600" htmlFor={`${id}-values`}>
+          Possible values (optional, one per line, written as in your data)
+          <textarea
+            id={`${id}-values`}
+            rows={Math.min(8, Math.max(3, values.split('\n').length))}
+            value={values}
+            onChange={(e) => setValues(e.target.value)}
+            placeholder={'e.g.\nAdult\nTeen\nChild'}
+            className={field}
+          />
+        </label>
+      )}
       <label className="block text-xs font-medium text-slate-600" htmlFor={`${id}-aliases`}>
         Also called (optional, separated by commas)
         <input

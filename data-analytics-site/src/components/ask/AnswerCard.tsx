@@ -5,6 +5,7 @@ import { describePlan } from '../../lib/ask/describe'
 import type { QueryResult } from '../../lib/ask/execute'
 import type { AnalyseResult, ReportAnswer } from '../../lib/ask/fullSchema'
 import { toCsvText } from '../../lib/generate/client'
+import { SaveToDashboard } from '../dashboards/SaveToDashboard'
 import { quietButton } from '../understanding/styles'
 import { formatCell } from './format'
 import { ResultChart } from './ResultChart'
@@ -69,7 +70,12 @@ export function AnswerCard({ entry, onRetry }: { entry: AskEntry; onRetry: () =>
             {answer.message}
           </p>
           {outcome.ok ? (
-            <Result result={outcome.result} chart={answer.chart} question={entry.question} />
+            <Result
+              result={outcome.result}
+              chart={answer.chart}
+              question={entry.question}
+              message={answer.message}
+            />
           ) : (
             <p
               role="alert"
@@ -120,6 +126,7 @@ function FullAnswer({ full, question }: { full: AnalyseResult; question: string 
         result={reportToResult(answer)}
         chart={answer.chart}
         question={question}
+        message={answer.message}
         basis="Worked out by Claude from every row of your files"
       />
       <details className="text-sm text-slate-600">
@@ -181,11 +188,14 @@ function Result({
   result,
   chart,
   question,
+  message,
   basis,
 }: {
   result: QueryResult
   chart: NonNullable<AskEntry['answer']>['chart']
   question: string
+  /** Claude's answer in words, saved with the chart on a dashboard. */
+  message: string
   /** Says where the numbers came from, in place of the row count. */
   basis?: string
 }) {
@@ -244,6 +254,13 @@ function Result({
             </>
           )}
         </span>
+        {showChart && drawn && (
+          <span className="ml-auto">
+            <SaveToDashboard
+              item={() => ({ kind: 'snapshot', title: question, summary: message, chart: drawn })}
+            />
+          </span>
+        )}
         {result.totalRows > 0 && (
           <button
             onClick={() => downloadResult(result, question)}

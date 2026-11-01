@@ -27,7 +27,13 @@ export interface DatasetSummary {
    */
   columnDefinitions: ReadonlyMap<
     string,
-    { description: string | null; role: ColumnRole | null; glossaryTerm?: string | null }
+    {
+      description: string | null
+      role: ColumnRole | null
+      glossaryTerm?: string | null
+      /** The glossary term's possible values, when it lists them. */
+      glossaryValues?: readonly string[]
+    }
   >
 }
 

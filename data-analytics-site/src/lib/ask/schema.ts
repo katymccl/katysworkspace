@@ -6,7 +6,7 @@
  * browser runs against the full data (see ./execute.ts).
  */
 import { z } from 'zod'
-import { COLUMN_ROLES, OUTPUT_LIMITS, REQUEST_LIMITS } from '../understanding/schema.js'
+import { COLUMN_ROLES, MAX_TERM_VALUES, OUTPUT_LIMITS, REQUEST_LIMITS } from '../understanding/schema.js'
 
 export const ASK_LIMITS = {
   maxQuestionLength: 500,
@@ -77,6 +77,11 @@ export const AskRequestSchema = z
                     description: text(OUTPUT_LIMITS.columnDescription).optional(),
                     /** The workspace glossary term the column follows, if any. */
                     glossaryTerm: text().optional(),
+                    /** The values the glossary says the column can take. */
+                    glossaryValues: z
+                      .array(text(REQUEST_LIMITS.maxValueLength))
+                      .max(MAX_TERM_VALUES)
+                      .optional(),
                     distinctCount: z.number().int().nonnegative(),
                     /** A few real values, so filters can match how the data is written. */
                     examples: z
