@@ -11,6 +11,24 @@ npm run dev
 
 `npm run build` type-checks and builds; `npm run lint` runs oxlint.
 
+## Production
+Github: https://github.com/katymccl/katysworkspace/tree/main/data-analytics-site
+
+Sema: https://sema-ai-analytics.vercel.app/
+
+## Datasets
+Example datasets used in the demo/testing are stored in datasets folder.
+- employee-data-set.csv: an edited copy of messy-employee-data-set
+- employee-training-completions.csv: a fictional generated dataset with training course completion data. Relates back to employee-data-set via employee_id.
+- Mt_Bachelor_Monthly_Snowfall_1941-2026.csv: an unrelated dataset of Mt Bachelor monthly snow totals from 1941 to 2026.
+- customers-10000.csv: a 10,000 row dataset used for testing scale and performance.
+## Anthropic key
+The anthropic api key for this project is currently held in .env.local. Please leave it untouched as it allows you to locally run the app and use the AI features.
+
+## Known Bugs
+- Switching workspaces deletes the data in your other workspace. Workspaces is a feature in development.
+- Adding a new dataset erases relationships found by Claude on All Datasets.
+
 ## Workspaces and saving
 
 Datasets live in **workspaces**: separate sets of related files, switched from the top of the
