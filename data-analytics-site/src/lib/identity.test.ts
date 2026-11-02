@@ -3,6 +3,7 @@ import {
   MAX_VERSIONS_REMEMBERED,
   contentFingerprint,
   matchDataset,
+  matchInWorkspace,
   recordUpload,
   schemaFingerprint,
   type DatasetRecord,
@@ -128,7 +129,7 @@ describe('recordUpload', () => {
   })
 
   it('adds a new dataset record', () => {
-    const records = recordUpload([], identity('ds-1', 'c1'), 'a.csv', '2026-01-01T00:00:00Z')
+    const records = recordUpload([], identity('ds-1', 'c1'), 'a.csv', '2026-01-01T00:00:00Z', 'w1')
     expect(records).toEqual([
       {
         datasetId: 'ds-1',
@@ -137,14 +138,15 @@ describe('recordUpload', () => {
         contentFingerprints: ['c1'],
         firstSeenAt: '2026-01-01T00:00:00Z',
         lastSeenAt: '2026-01-01T00:00:00Z',
+        workspaceId: 'w1',
       },
     ])
   })
 
   it('appends new versions, keeps the first-seen time and does not modify its input', () => {
-    const first = recordUpload([], identity('ds-1', 'c1'), 'a.csv', '2026-01-01T00:00:00Z')
+    const first = recordUpload([], identity('ds-1', 'c1'), 'a.csv', '2026-01-01T00:00:00Z', 'w1')
     const frozen = Object.freeze(first.map((r) => Object.freeze({ ...r })))
-    const second = recordUpload(frozen, identity('ds-1', 'c2'), 'a.csv', '2026-02-01T00:00:00Z')
+    const second = recordUpload(frozen, identity('ds-1', 'c2'), 'a.csv', '2026-02-01T00:00:00Z', 'w1')
     expect(second).toHaveLength(1)
     expect(second[0]).toMatchObject({
       contentFingerprints: ['c1', 'c2'],
@@ -156,8 +158,8 @@ describe('recordUpload', () => {
 
   it('remembers every file name, so a renamed copy does not break later version matching', () => {
     // Upload sales.csv, then the same bytes as copy.csv, then a new version of sales.csv.
-    let records = recordUpload([], identity('ds-1', 'c1'), 'sales.csv', 't1')
-    records = recordUpload(records, identity('ds-1', 'c1'), 'copy.csv', 't2')
+    let records = recordUpload([], identity('ds-1', 'c1'), 'sales.csv', 't1', 'w1')
+    records = recordUpload(records, identity('ds-1', 'c1'), 'copy.csv', 't2', 'w1')
     expect(records[0].fileNames).toEqual(['sales.csv', 'copy.csv'])
     const next = matchDataset(
       records,
@@ -168,18 +170,68 @@ describe('recordUpload', () => {
   })
 
   it('moves a re-seen version to the end instead of duplicating it', () => {
-    let records = recordUpload([], identity('ds-1', 'c1'), 'a.csv', 't1')
-    records = recordUpload(records, identity('ds-1', 'c2'), 'a.csv', 't2')
-    records = recordUpload(records, identity('ds-1', 'c1'), 'a.csv', 't3')
+    let records = recordUpload([], identity('ds-1', 'c1'), 'a.csv', 't1', 'w1')
+    records = recordUpload(records, identity('ds-1', 'c2'), 'a.csv', 't2', 'w1')
+    records = recordUpload(records, identity('ds-1', 'c1'), 'a.csv', 't3', 'w1')
     expect(records[0].contentFingerprints).toEqual(['c2', 'c1'])
   })
 
   it('remembers a limited number of versions', () => {
     let records: DatasetRecord[] = []
     for (let i = 0; i < MAX_VERSIONS_REMEMBERED + 5; i++) {
-      records = recordUpload(records, identity('ds-1', `c${i}`), 'a.csv', `t${i}`)
+      records = recordUpload(records, identity('ds-1', `c${i}`), 'a.csv', `t${i}`, 'w1')
     }
     expect(records[0].contentFingerprints).toHaveLength(MAX_VERSIONS_REMEMBERED)
     expect(records[0].contentFingerprints.at(-1)).toBe(`c${MAX_VERSIONS_REMEMBERED + 4}`)
+  })
+})
+
+describe('matchInWorkspace', () => {
+  const record = (datasetId: string, workspaceId: string | undefined, content = 'c1') => ({
+    datasetId,
+    fileNames: ['sales.csv'],
+    schemaFingerprint: 's',
+    contentFingerprints: [content],
+    firstSeenAt: '2026-01-01T00:00:00Z',
+    lastSeenAt: '2026-01-01T00:00:00Z',
+    workspaceId,
+  })
+  const upload = (content: string) => ({
+    fileName: 'sales.csv',
+    fingerprints: { schema: 's', content },
+  })
+
+  it("recognises the workspace's own datasets", () => {
+    expect(matchInWorkspace([record('a', 'w1')], upload('c1'), 'w1', () => 'new')).toMatchObject({
+      datasetId: 'a',
+      matchedBy: 'same-content',
+    })
+  })
+
+  it('makes the same file in another workspace a separate copy there', () => {
+    expect(matchInWorkspace([record('a', 'w1')], upload('c1'), 'w2', () => 'new')).toEqual({
+      datasetId: 'new',
+      fingerprints: { schema: 's', content: 'c1' },
+      matchedBy: 'copy',
+      copyOf: 'a',
+    })
+  })
+
+  it("never makes a new version of another workspace's dataset", () => {
+    expect(matchInWorkspace([record('a', 'w1')], upload('c2'), 'w2', () => 'new')).toMatchObject({
+      datasetId: 'new',
+      matchedBy: 'new-dataset',
+    })
+  })
+
+  it('lets any workspace claim a record from before workspaces', () => {
+    const legacy = record('old', undefined)
+    expect(matchInWorkspace([legacy], upload('c2'), 'w2', () => 'new')).toMatchObject({
+      datasetId: 'old',
+      matchedBy: 'new-version',
+    })
+    const identity = matchInWorkspace([legacy], upload('c2'), 'w2', () => 'new')
+    const [claimed] = recordUpload([legacy], identity, 'sales.csv', 't', 'w2')
+    expect(claimed.workspaceId).toBe('w2')
   })
 })

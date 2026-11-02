@@ -8,10 +8,23 @@ interface ColumnDefinitionProps {
   column: ResolvedColumn
   onSave: (update: { description: string; role: ColumnRole }) => void
   onRevert: () => void
+  /** Adds this column to the workspace glossary as a new term. */
+  onAddToGlossary?: () => void
+  /** Opens the glossary page, to edit the term this column follows. */
+  onOpenGlossary?: () => void
 }
 
-/** A column's meaning and role inside its profile card: suggested or confirmed, and editable. */
-export function ColumnDefinition({ column, onSave, onRevert }: ColumnDefinitionProps) {
+/**
+ * A column's meaning and role inside its profile card: suggested, from the workspace glossary, or
+ * confirmed for this dataset, and editable.
+ */
+export function ColumnDefinition({
+  column,
+  onSave,
+  onRevert,
+  onAddToGlossary,
+  onOpenGlossary,
+}: ColumnDefinitionProps) {
   const [draft, setDraft] = useState<{ description: string; role: ColumnRole } | null>(null)
   const descriptionId = useId()
   const roleId = useId()
@@ -20,9 +33,12 @@ export function ColumnDefinition({ column, onSave, onRevert }: ColumnDefinitionP
   const source =
     description.source === 'confirmed' || role.source === 'confirmed'
       ? 'confirmed'
-      : description.source === 'suggested' || role.source === 'suggested'
-        ? 'suggested'
-        : 'none'
+      : description.source === 'glossary' || role.source === 'glossary'
+        ? 'glossary'
+        : description.source === 'suggested' || role.source === 'suggested'
+          ? 'suggested'
+          : 'none'
+  const term = column.glossaryTerm
   // Reverting only makes sense when the AI's suggestion would actually change something.
   const suggestionDiffers =
     (description.suggestion !== null && description.suggestion !== description.value) ||
@@ -58,6 +74,12 @@ export function ColumnDefinition({ column, onSave, onRevert }: ColumnDefinitionP
             </option>
           ))}
         </select>
+        {term && (
+          <p className="text-xs text-slate-500">
+            Saving changes this dataset only. To change “{term.term}” everywhere, edit it in the
+            glossary.
+          </p>
+        )}
         <div className="flex gap-2">
           <button
             onClick={() => {
@@ -114,11 +136,29 @@ export function ColumnDefinition({ column, onSave, onRevert }: ColumnDefinitionP
         >
           {description.value || role.value ? 'Edit' : 'Add'}
         </button>
-        {source === 'confirmed' && suggestionDiffers && (
+        {source === 'confirmed' && term ? (
           <button onClick={onRevert} className={linkButton}>
-            Revert to suggestion
+            Use the glossary meaning
           </button>
+        ) : (
+          source === 'confirmed' &&
+          suggestionDiffers && (
+            <button onClick={onRevert} className={linkButton}>
+              Revert to suggestion
+            </button>
+          )
         )}
+        {term
+          ? onOpenGlossary && (
+              <button onClick={onOpenGlossary} className={linkButton}>
+                Glossary: {term.term}
+              </button>
+            )
+          : onAddToGlossary && (
+              <button onClick={onAddToGlossary} className={linkButton}>
+                Add to glossary
+              </button>
+            )}
       </div>
     </div>
   )

@@ -1,21 +1,79 @@
-import { Suspense, lazy, useEffect, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { CleanPanel } from './components/clean/CleanPanel'
-import { Menu } from 'lucide-react'
+import { ArrowLeft, Menu } from 'lucide-react'
 import { AskPage } from './components/ask/AskPage'
+import { ExplorePage } from './components/explore/ExplorePage'
+import { OverviewPage } from './components/overview/OverviewPage'
+import { DashboardsPage } from './components/dashboards/DashboardsPage'
+import { deleteProgress, loadExplored, saveExplored } from './lib/progress'
+import {
+  renameConfirmed,
+  renameDashboards,
+  renameGlossarySources,
+  renameNames,
+  renameRelationships,
+  renameSuggestion,
+} from './lib/clean/rename'
+import { loadColumnOrder, saveColumnOrder } from './lib/preview/table'
+import {
+  loadConfirmedRelationships,
+  loadRejectedRelationships,
+  saveConfirmedRelationships,
+  saveRejectedRelationships,
+} from './lib/relationships/confirmed'
+import { DashboardSaveContext, type DashboardSaver } from './components/dashboards/context'
+import {
+  addItem,
+  deleteDashboards,
+  loadDashboards,
+  moveItem,
+  newDashboard,
+  removeDashboard,
+  removeItem,
+  renameDashboard,
+  saveDashboards,
+  type Dashboard,
+} from './lib/dashboards'
 import { CsvPreview } from './components/CsvPreview'
 import { CsvUploader } from './components/CsvUploader'
 import { SampleGenerator } from './components/generate/SampleGenerator'
 import { Home } from './components/Home'
 import { Notices, type Notice } from './components/Notices'
 import { Sidebar } from './components/Sidebar'
+import { WorkspaceSwitcher } from './components/WorkspaceSwitcher'
+import { GlossaryPage } from './components/glossary/GlossaryPage'
 import { ColumnDefinition } from './components/understanding/ColumnDefinition'
 import { UnderstandingPanel } from './components/understanding/UnderstandingPanel'
 import { Wordmark } from './components/Wordmark'
 import { useAsk } from './hooks/useAsk'
 import { useUnderstanding } from './hooks/useUnderstanding'
+import { forgetUploads } from './lib/ask/full'
 import { toDataset, type Dataset, type View } from './lib/datasets'
+import {
+  COLUMN_DRAG_TYPE,
+  addColumnTerm,
+  columnDragData,
+  columnValues,
+  deleteGlossary,
+  findTerm,
+  loadGlossary,
+  removeTerm,
+  saveGlossary,
+  updateTerm,
+  type GlossaryTerm,
+} from './lib/glossary'
+import { deleteStoredDataset, fromStored, loadStoredDatasets, saveDataset } from './lib/persist/datasets'
+import {
+  DEFAULT_WORKSPACE_NAME,
+  deleteWorkspace,
+  loadWorkspaces,
+  newWorkspace,
+  saveCurrentWorkspaceId,
+  saveWorkspace,
+  type Workspace,
+} from './lib/workspaces'
 import { cleanedCsvData } from './lib/clean/version'
-import { matchDataset, recordUpload, type MatchReason } from './lib/identity'
+import { matchInWorkspace, recordUpload, type MatchReason } from './lib/identity'
 import type { BaseSource } from './lib/generate/base'
 import type { CsvData, CsvRow } from './lib/parseCsv'
 import { withDismissedIdentifiers } from './lib/profiling'
@@ -25,12 +83,15 @@ import {
   confirmColumn,
   confirmDatasetField,
   copySavedUnderstanding,
+  countPendingSuggestions,
   loadDismissedIdentifiers,
   loadRegistry,
+  loadSuggestion,
   revertColumn,
   revertDatasetField,
   saveDismissedIdentifiers,
   saveRegistry,
+  saveSuggestion,
   type ConfirmedDefinitions,
   type ResolvedUnderstanding,
 } from './lib/understanding'
@@ -54,14 +115,141 @@ function notice(kind: Notice['kind'], message: string): Notice {
 }
 
 function App() {
-  const understanding = useUnderstanding()
+  // The open workspace's glossary; its meanings fill in for AI suggestions on matching columns.
+  const [glossary, setGlossary] = useState<GlossaryTerm[]>([])
+  // The open workspace's dashboards of saved charts.
+  const [dashboards, setDashboards] = useState<Dashboard[]>([])
+  // Whether "Explore your data" has been opened in the open workspace, for Overview's tick.
+  const [explored, setExplored] = useState(false)
+  const understanding = useUnderstanding(glossary)
   const [datasets, setDatasets] = useState<Dataset[]>([])
-  const ask = useAsk(datasets, understanding.resolve)
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([])
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null)
+  const currentWorkspace = workspaces.find((w) => w.id === workspaceId) ?? null
+  const ask = useAsk(datasets, understanding.resolve, workspaceId, currentWorkspace?.fullData ?? false)
   const [view, setView] = useState<View>({ kind: 'home' })
+  // Where the back link returns to: set when a page is opened from Overview, and kept through
+  // what follows (such as an upload opening its dataset) until the menu is used or it's followed.
+  const [backTo, setBackTo] = useState<{ kind: 'overview' } | null>(null)
+  /** Opens a page from the menu, which starts afresh: no back link. */
+  const selectFromMenu = (next: View) => {
+    setBackTo(null)
+    setView(next)
+  }
   const [datasetsOpen, setDatasetsOpen] = useState(true)
 
   const [notices, setNotices] = useState<Notice[]>([])
   const [menuOpen, setMenuOpen] = useState(false)
+
+  // The open workspace's id, once loaded. Uploads made while it loads wait for it, so they land in
+  // the right workspace.
+  const workspaceReady = useRef<Promise<string> | null>(null)
+  /** The workspace whose datasets are being shown; a later switch wins over a slower earlier one. */
+  const showing = useRef<string | null>(null)
+  const { restore } = understanding
+
+  /**
+   * Opens a workspace and its saved datasets. With `keepUnsaved`, datasets added while it loaded
+   * stay after the saved ones. Returns the datasets, or null if another workspace was opened since.
+   */
+  const showWorkspace = useCallback(
+    async (id: string, keepUnsaved = false): Promise<Dataset[] | null> => {
+      showing.current = id
+      workspaceReady.current = Promise.resolve(id)
+      saveCurrentWorkspaceId(id)
+      setWorkspaceId(id)
+      setGlossary(loadGlossary(id))
+      setDashboards(loadDashboards(id))
+      setExplored(loadExplored(id))
+      const stored = await loadStoredDatasets(id)
+      if (showing.current !== id) return null
+      const restored = stored.map((s) => fromStored(s, loadDismissedIdentifiers(s.datasetId)))
+      restore(restored)
+      setDatasets((prev) =>
+        keepUnsaved
+          ? [...restored, ...prev.filter((d) => !restored.some((r) => r.id === d.id))]
+          : restored,
+      )
+      return restored
+    },
+    [restore],
+  )
+
+  useEffect(() => {
+    let live = true
+    workspaceReady.current = loadWorkspaces().then(async (loaded) => {
+      if (!live) return loaded.currentId
+      setWorkspaces(loaded.workspaces)
+      if (!loaded.persistent) {
+        setNotices([
+          notice(
+            'error',
+            "This browser isn't letting sema save data, so your datasets will be gone when you close the tab.",
+          ),
+        ])
+      }
+      await showWorkspace(loaded.currentId, true)
+      return loaded.currentId
+    })
+    return () => {
+      live = false
+    }
+  }, [showWorkspace])
+
+  async function switchWorkspace(id: string) {
+    if (id === workspaceId) return
+    setNotices([])
+    const shown = await showWorkspace(id)
+    // Overview shows where the workspace stands and what to do next; a new one starts at uploading.
+    if (shown) {
+      setBackTo(null)
+      setView({ kind: 'overview' })
+    }
+  }
+
+  async function createWorkspace(name: string) {
+    const w = newWorkspace(name, crypto.randomUUID(), new Date().toISOString())
+    await saveWorkspace(w)
+    setWorkspaces((list) => [...list, w])
+    await switchWorkspace(w.id)
+    setNotices([notice('success', `Created the workspace "${w.name}".`)])
+  }
+
+  function updateWorkspace(id: string, change: Partial<Omit<Workspace, 'id'>>) {
+    setWorkspaces((list) =>
+      list.map((w) => {
+        if (w.id !== id) return w
+        const next = { ...w, ...change }
+        void saveWorkspace(next)
+        return next
+      }),
+    )
+  }
+
+  /** Deletes a workspace and its saved datasets, opening another (or a fresh one) if needed. */
+  async function removeWorkspace(id: string) {
+    const gone = workspaces.find((w) => w.id === id)
+    const deleted = await deleteWorkspace(id)
+    deleteGlossary(id)
+    deleteDashboards(id)
+    deleteProgress(id)
+    void forgetUploads(deleted.map((d) => d.datasetId))
+    let rest = workspaces.filter((w) => w.id !== id)
+    if (rest.length === 0) {
+      const fresh = newWorkspace(DEFAULT_WORKSPACE_NAME, crypto.randomUUID(), new Date().toISOString())
+      await saveWorkspace(fresh)
+      rest = [fresh]
+    }
+    setWorkspaces(rest)
+    if (id === workspaceId) await switchWorkspace(rest[0].id)
+    setNotices([
+      notice(
+        'success',
+        `Deleted the workspace "${gone?.name ?? ''}" and its ${deleted.length} dataset${deleted.length === 1 ? '' : 's'}.`,
+      ),
+    ])
+  }
+
   const menuButtonRef = useRef<HTMLButtonElement>(null)
 
   function closeMenu() {
@@ -81,7 +269,88 @@ function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [menuOpen])
 
-  function handleUpload(loaded: CsvData[], errors: string[]) {
+  const markExplored = useCallback(() => {
+    if (!workspaceId) return
+    setExplored(true)
+    saveExplored(workspaceId)
+  }, [workspaceId])
+
+  function changeDashboards(next: Dashboard[]) {
+    if (!workspaceId) return
+    setDashboards(next)
+    saveDashboards(workspaceId, next)
+  }
+
+  /** Lets any chart be saved to a dashboard, new or existing. */
+  const dashboardSaver: DashboardSaver = {
+    dashboards,
+    save(item, to) {
+      const now = new Date().toISOString()
+      let list = dashboards
+      let target = 'id' in to ? dashboards.find((d) => d.id === to.id) : undefined
+      if (!target) {
+        target = newDashboard('newName' in to ? to.newName : '', crypto.randomUUID(), now)
+        list = [...list, target]
+      }
+      changeDashboards(addItem(list, target.id, item, crypto.randomUUID(), now))
+      return { id: target.id, name: target.name }
+    },
+    open: (id) => setView({ kind: 'dashboards', id }),
+  }
+
+  function changeGlossary(next: GlossaryTerm[]) {
+    if (!workspaceId) return
+    setGlossary(next)
+    saveGlossary(workspaceId, next)
+  }
+
+  /** Adds a column (dragged in, or from its "Add to glossary" button) as a glossary term. */
+  function addColumnToGlossary({ datasetId, column }: { datasetId: string; column: string }) {
+    const d = datasets.find((x) => x.datasetId === datasetId)
+    if (!d) return
+    const resolved = understanding.resolve(d).columns.find((c) => c.name === column)
+    const role = resolved?.role.value ?? null
+    const { terms, term, added } = addColumnTerm(
+      glossary,
+      {
+        datasetId,
+        name: column,
+        description: resolved?.description.value ?? null,
+        role,
+        values: columnValues(d.rows, column, role),
+      },
+      crypto.randomUUID(),
+      new Date().toISOString(),
+    )
+    if (added) changeGlossary(terms)
+    setNotices([
+      notice(
+        'success',
+        added
+          ? `Added “${term.term}” to the glossary. Columns with that name in this workspace now use its meaning.`
+          : `“${column}” is already in the glossary as “${term.term}”.`,
+      ),
+    ])
+  }
+
+  /** Adds a term written by hand on the Glossary page, unless its name is already a term. */
+  function addTypedTerm(
+    t: Pick<GlossaryTerm, 'term' | 'description' | 'role' | 'aliases' | 'values'>,
+  ) {
+    const existing = findTerm(glossary, t.term)
+    if (existing) {
+      setNotices([notice('error', `“${t.term}” is already in the glossary as “${existing.term}”.`)])
+      return
+    }
+    const now = new Date().toISOString()
+    const id = crypto.randomUUID()
+    // updateTerm tidies the other names and values as it would for an edit.
+    changeGlossary(updateTerm([...glossary, { id, ...t, from: null, updatedAt: now }], id, {}, now))
+  }
+
+  async function handleUpload(loaded: CsvData[], errors: string[]) {
+    const ws = await workspaceReady.current
+    if (!ws) return
     let registry = loadRegistry()
     const now = new Date().toISOString()
     const added: Dataset[] = []
@@ -91,7 +360,7 @@ function App() {
     for (const data of loaded) {
       const sameVersion = (d: Dataset, datasetId: string) =>
         d.datasetId === datasetId && d.fingerprints.content === data.fingerprints.content
-      let identity = matchDataset(registry, data, () => crypto.randomUUID())
+      let identity = matchInWorkspace(registry, data, ws, () => crypto.randomUUID())
       // Already open under another name (a match remembered from before uploads were told apart
       // by file name): this file is a copy, not the same dataset again.
       const openElsewhere = [...datasets, ...added].some(
@@ -105,7 +374,7 @@ function App() {
           copyOf: identity.datasetId,
         }
       }
-      registry = recordUpload(registry, identity, data.fileName, now)
+      registry = recordUpload(registry, identity, data.fileName, now, ws)
       if (identity.copyOf) copySavedUnderstanding(identity.copyOf, identity.datasetId)
 
       // The exact same version is already open: show it instead of opening a second copy.
@@ -130,6 +399,7 @@ function App() {
     }
     saveRegistry(registry)
     understanding.restore(added)
+    for (const d of added) void saveDataset(d, ws)
 
     // Each upload replaces the previous upload's messages.
     setNotices([...messages, ...errors.map((message) => notice('error', message))])
@@ -142,7 +412,10 @@ function App() {
 
   function handleRemove(id: string) {
     const remaining = datasets.filter((d) => d.id !== id)
+    const gone = datasets.find((d) => d.id === id)
     setDatasets(remaining)
+    void deleteStoredDataset(id)
+    if (gone) void forgetUploads([gone.datasetId])
     setView(remaining.length > 0 ? { kind: 'dataset', id: remaining[0].id } : { kind: 'upload' })
   }
 
@@ -150,23 +423,66 @@ function App() {
    * Replaces an open dataset with its cleaned rows, as a new version of the same dataset: its
    * definitions and identifier choices carry over, and the registry remembers the new content.
    */
-  async function handleCleaned(id: string, columns: string[], rows: CsvRow[], message: string) {
+  async function handleCleaned(
+    id: string,
+    columns: string[],
+    rows: CsvRow[],
+    renames: Record<string, string>,
+    message: string,
+  ) {
     const old = datasets.find((d) => d.id === id)
-    if (!old) return
+    const ws = await workspaceReady.current
+    if (!old || !ws) return
     const data = await cleanedCsvData(old, columns, rows)
+    if (Object.keys(renames).length > 0) carryRenames(old, renames)
+    // Claude's suggestion still describes the columns (renamed, and those that remain), so the new
+    // version starts from it rather than from nothing.
+    const suggestion = loadSuggestion(old.datasetId, old.fingerprints.content)
+    if (suggestion) {
+      saveSuggestion(old.datasetId, data.fingerprints.content, {
+        ...suggestion,
+        understanding: renameSuggestion(suggestion.understanding, renames, data.columns),
+      })
+    }
     const identity = {
       datasetId: old.datasetId,
       fingerprints: data.fingerprints,
       matchedBy: 'new-version' as const,
     }
-    saveRegistry(recordUpload(loadRegistry(), identity, data.fileName, new Date().toISOString()))
+    saveRegistry(
+      recordUpload(loadRegistry(), identity, data.fileName, data.cleanedAt ?? old.addedAt, ws),
+    )
     const cleaned = {
       ...toDataset(data, identity, loadDismissedIdentifiers(old.datasetId)),
       id: old.id,
+      addedAt: old.addedAt,
     }
     understanding.restore([cleaned])
+    void saveDataset(cleaned, ws)
+    // The earlier version's upload is no longer needed.
+    void forgetUploads([old.datasetId], data.fingerprints.content)
     setDatasets((prev) => prev.map((d) => (d.id === id ? cleaned : d)))
     setNotices([notice('success', message)])
+  }
+
+  /**
+   * Moves everything that refers to a dataset's columns by name onto their new names: confirmed
+   * meanings, identifier choices, relationship decisions, column order, saved Explore charts and
+   * the glossary's notes of where terms came from.
+   */
+  function carryRenames(old: Dataset, renames: Record<string, string>) {
+    const { datasetId } = old
+    understanding.updateConfirmed(datasetId, (c) => renameConfirmed(c, renames))
+    saveDismissedIdentifiers(datasetId, renameNames(loadDismissedIdentifiers(datasetId), renames))
+    saveConfirmedRelationships(renameRelationships(loadConfirmedRelationships(), datasetId, renames))
+    saveRejectedRelationships(renameRelationships(loadRejectedRelationships(), datasetId, renames))
+    const order = loadColumnOrder(datasetId)
+    if (order) {
+      const fileOrder = renameNames(old.columns, renames)
+      saveColumnOrder(datasetId, renameNames(order, renames), fileOrder)
+    }
+    changeDashboards(renameDashboards(dashboards, old.id, renames))
+    changeGlossary(renameGlossarySources(glossary, datasetId, renames))
   }
 
   /** Removes or restores a column's identifier flag, for every open version of the dataset. */
@@ -190,7 +506,8 @@ function App() {
       <Home
         datasetCount={datasets.length}
         onUpload={() => setView({ kind: 'upload' })}
-        onViewDatasets={() => setView({ kind: 'dataset', id: datasets[0].id })}
+        onViewDatasets={() => setView({ kind: 'all' })}
+        onOpenOverview={() => setView({ kind: 'overview' })}
       />
     )
   }
@@ -201,137 +518,285 @@ function App() {
     datasetsOpen,
     onToggleDatasets: () => setDatasetsOpen((open) => !open),
     nameOf: (d: Dataset) => understanding.resolve(d).name.value ?? d.fileName,
+    workspaceSwitcher: (
+      <WorkspaceSwitcher
+        workspaces={workspaces}
+        current={currentWorkspace}
+        datasetCount={datasets.length}
+        onSwitch={(id) => void switchWorkspace(id)}
+        onCreate={(name) => void createWorkspace(name)}
+        onRename={(id, name) => updateWorkspace(id, { name })}
+        onDelete={(id) => void removeWorkspace(id)}
+      />
+    ),
+    glossaryCount: glossary.length,
+    dashboardCount: dashboards.length,
+    onDropColumn: addColumnToGlossary,
   }
 
   return (
-    <div className="flex h-screen">
-      <div className="hidden md:flex">
-        <Sidebar {...sidebarProps} onSelect={setView} />
-      </div>
-
-      {menuOpen && (
-        <div
-          className="fixed inset-0 z-40 md:hidden"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Menu"
-        >
-          <div className="absolute inset-0 bg-slate-900/30" onClick={closeMenu} aria-hidden />
-          <div className="relative h-full w-64 max-w-[85vw] shadow-xl">
-            <Sidebar
-              {...sidebarProps}
-              onSelect={(next) => {
-                setView(next)
-                closeMenu()
-              }}
-              onClose={closeMenu}
-            />
-          </div>
+    <DashboardSaveContext.Provider value={dashboardSaver}>
+      <div className="flex h-screen">
+        <div className="hidden md:flex">
+          <Sidebar {...sidebarProps} onSelect={selectFromMenu} />
         </div>
-      )}
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 md:hidden">
-          <button onClick={() => setView({ kind: 'home' })} aria-label="sema home">
-            <Wordmark className="text-2xl" />
-          </button>
-          <button
-            ref={menuButtonRef}
-            onClick={() => setMenuOpen(true)}
-            aria-label="Open menu"
-            aria-expanded={menuOpen}
-            className="rounded-lg p-2 text-slate-600 hover:bg-slate-100"
+        {menuOpen && (
+          <div
+            className="fixed inset-0 z-40 md:hidden"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Menu"
           >
-            <Menu className="h-5 w-5" />
-          </button>
-        </header>
+            <div className="absolute inset-0 bg-slate-900/30" onClick={closeMenu} aria-hidden />
+            <div className="relative h-full w-64 max-w-[85vw] shadow-xl">
+              <Sidebar
+                {...sidebarProps}
+                onSelect={(next) => {
+                  selectFromMenu(next)
+                  closeMenu()
+                }}
+                onClose={closeMenu}
+              />
+            </div>
+          </div>
+        )}
 
-        <main className="flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-6xl px-4 py-6 sm:px-8 sm:py-10">
-            <Notices
-              notices={notices}
-              onDismiss={(id) => setNotices((prev) => prev.filter((n) => n.id !== id))}
-            />
-            {view.kind === 'upload' && (
-              <>
-                <PageHeader
-                  title="Upload datasets"
-                  subtitle="Add one or more CSV files. Each file becomes its own dataset."
-                />
-                <CsvUploader onUpload={handleUpload} />
-                <div className="mt-6">
-                  <SampleGenerator
-                    key={view.baseId ?? 'none'}
-                    bases={datasets.map((d) => ({
-                      id: d.id,
-                      name: understanding.resolve(d).name.value ?? d.fileName,
-                    }))}
-                    getBase={(id) => {
-                      const d = datasets.find((x) => x.id === id)
-                      return d
-                        ? {
-                            source: baseSource(d, understanding.resolve(d)),
-                            datasetId: d.datasetId,
-                          }
-                        : null
-                    }}
-                    initialBaseId={view.baseId}
-                    onGenerated={(data) => handleUpload([data], [])}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 md:hidden">
+            <button onClick={() => selectFromMenu({ kind: 'home' })} aria-label="sema home">
+              <Wordmark className="text-2xl" />
+            </button>
+            <button
+              ref={menuButtonRef}
+              onClick={() => setMenuOpen(true)}
+              aria-label="Open menu"
+              aria-expanded={menuOpen}
+              className="rounded-lg p-2 text-slate-600 hover:bg-slate-100"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+          </header>
+
+          <main className="flex-1 overflow-y-auto">
+            <div className="mx-auto max-w-6xl px-4 py-6 sm:px-8 sm:py-10">
+              <Notices
+                notices={notices}
+                onDismiss={(id) => setNotices((prev) => prev.filter((n) => n.id !== id))}
+              />
+              {backTo && view.kind !== backTo.kind && (
+                <button
+                  onClick={() => selectFromMenu(backTo)}
+                  className="mb-4 inline-flex items-center gap-1.5 rounded-lg px-2 py-1 -ml-2 text-sm font-medium text-violet-700 hover:bg-violet-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
+                >
+                  <ArrowLeft className="h-4 w-4" aria-hidden />
+                  Back to Overview
+                </button>
+              )}
+              {view.kind === 'upload' && (
+                <>
+                  <PageHeader
+                    title="Upload datasets"
+                    subtitle="Add one or more CSV files. Each file becomes its own dataset."
                   />
-                </div>
-              </>
-            )}
+                  <CsvUploader onUpload={handleUpload} />
+                  <div className="mt-6">
+                    <SampleGenerator
+                      key={view.baseId ?? 'none'}
+                      bases={datasets.map((d) => ({
+                        id: d.id,
+                        name: understanding.resolve(d).name.value ?? d.fileName,
+                      }))}
+                      getBase={(id) => {
+                        const d = datasets.find((x) => x.id === id)
+                        return d
+                          ? {
+                              source: baseSource(d, understanding.resolve(d)),
+                              datasetId: d.datasetId,
+                            }
+                          : null
+                      }}
+                      initialBaseId={view.baseId}
+                      onGenerated={(data) => handleUpload([data], [])}
+                    />
+                  </div>
+                </>
+              )}
 
-            {view.kind === 'ask' && (
+              {view.kind === 'ask' && (
+                <>
+                  <PageHeader
+                    title="Ask with AI"
+                    subtitle={
+                      currentWorkspace?.fullData
+                        ? 'Ask a question in plain English. Claude works out the answer from every row of this workspace’s files.'
+                        : 'Ask a question in plain English. Claude plans the answer; your browser works it out from every row.'
+                    }
+                  />
+                  <AskPage
+                    datasets={datasets}
+                    nameOf={(d) => understanding.resolve(d).name.value ?? d.fileName}
+                    ask={ask}
+                    workspaceName={currentWorkspace?.name ?? 'this workspace'}
+                    fullData={currentWorkspace?.fullData ?? false}
+                    onFullDataChange={(on) => {
+                      if (!currentWorkspace) return
+                      updateWorkspace(currentWorkspace.id, { fullData: on })
+                      // Turning it off removes the copies Claude could read.
+                      if (!on) void forgetUploads(datasets.map((d) => d.datasetId))
+                    }}
+                  />
+                </>
+              )}
+
+              {view.kind === 'glossary' && (
+                <>
+                  <PageHeader
+                    title="Glossary"
+                    subtitle={
+                      <>
+                        Terms for{' '}
+                        <strong className="font-semibold text-slate-700">
+                          {currentWorkspace?.name ?? 'this workspace'}
+                        </strong>
+                        . Define a column’s meaning once and it applies across each matching
+                        column in this workspace’s datasets, for you and for Claude.
+                      </>
+                    }
+                  />
+                  <GlossaryPage
+                    terms={glossary}
+                    columns={datasets.flatMap((d) => {
+                      const r = understanding.resolve(d)
+                      return r.columns.map((c) => ({
+                        datasetName: r.name.value ?? d.fileName,
+                        column: c.name,
+                        overridden:
+                          c.description.source === 'confirmed' || c.role.source === 'confirmed',
+                      }))
+                    })}
+                    onAdd={addTypedTerm}
+                    onUpdate={(id, change) =>
+                      changeGlossary(updateTerm(glossary, id, change, new Date().toISOString()))
+                    }
+                    onRemove={(id) => changeGlossary(removeTerm(glossary, id))}
+                    onDropColumn={addColumnToGlossary}
+                  />
+                </>
+              )}
+
+              {view.kind === 'overview' && (
               <>
                 <PageHeader
-                  title="Ask your data"
-                  subtitle="Ask a question in plain English. Claude plans the answer; your browser works it out from every row."
+                  title="Overview"
+                  subtitle="Give your data meaning from preparation to exploration to visualization."
                 />
-                <AskPage
+                <OverviewPage
                   datasets={datasets}
                   nameOf={(d) => understanding.resolve(d).name.value ?? d.fileName}
-                  ask={ask}
+                  pendingOf={(d) => countPendingSuggestions(understanding.resolve(d))}
+                  interpretedOf={(d) => understanding.stateFor(d).suggestion !== null}
+                  glossaryCount={glossary.length}
+                  questionCount={ask.entries.length}
+                  explored={explored}
+                  dashboardCount={dashboards.length}
+                  onGo={(next) => {
+                    setBackTo({ kind: 'overview' })
+                    setView(next)
+                  }}
                 />
               </>
             )}
 
-            {view.kind === 'all' && (
-              <>
-                <PageHeader
-                  title="All datasets"
-                  subtitle={`${datasets.length} dataset${datasets.length === 1 ? '' : 's'} loaded`}
-                />
-                <Suspense
-                  fallback={<p className="text-sm text-slate-500">Loading relationships…</p>}
-                >
-                  <RelationshipsPage datasets={datasets} resolve={understanding.resolve} />
-                </Suspense>
-              </>
-            )}
+            {view.kind === 'explore' && (
+                <>
+                  <PageHeader
+                    title="Explore your data"
+                    subtitle="Pick a question and the columns to answer it with. Charts are worked out in your browser from every row; nothing is sent to Claude."
+                  />
+                  <ExplorePage
+                    datasets={datasets}
+                    nameOf={(d) => understanding.resolve(d).name.value ?? d.fileName}
+                    onVisit={markExplored}
+                  />
+                </>
+              )}
 
-            {selected && (
-              <DatasetPage
-                dataset={selected}
-                understanding={understanding}
-                onRemove={() => handleRemove(selected.id)}
-                onGenerateRelated={() => setView({ kind: 'upload', baseId: selected.id })}
-                onIdentifierDismissed={(name, dismissed) =>
-                  handleIdentifierDismissed(selected.datasetId, name, dismissed)
-                }
-                onCleaned={(columns, rows, message) =>
-                  handleCleaned(selected.id, columns, rows, message)
-                }
-              />
-            )}
-          </div>
-        </main>
+              {view.kind === 'dashboards' && (
+                <>
+                  <PageHeader
+                    title="Dashboards"
+                    subtitle={
+                      <>
+                        Saved charts for{' '}
+                        <strong className="font-semibold text-slate-700">
+                          {currentWorkspace?.name ?? 'this workspace'}
+                        </strong>
+                        , from any of its datasets.
+                      </>
+                    }
+                  />
+                  <DashboardsPage
+                    dashboards={dashboards}
+                    selectedId={view.id}
+                    datasets={datasets}
+                    nameOf={(d) => understanding.resolve(d).name.value ?? d.fileName}
+                    onSelect={(id) => setView({ kind: 'dashboards', id })}
+                    onCreate={(name) => {
+                      const d = newDashboard(name, crypto.randomUUID(), new Date().toISOString())
+                      changeDashboards([...dashboards, d])
+                      setView({ kind: 'dashboards', id: d.id })
+                    }}
+                    onRename={(id, name) => changeDashboards(renameDashboard(dashboards, id, name))}
+                    onDelete={(id) => changeDashboards(removeDashboard(dashboards, id))}
+                    onRemoveItem={(id, itemId) => changeDashboards(removeItem(dashboards, id, itemId))}
+                    onMoveItem={(id, itemId, by) => changeDashboards(moveItem(dashboards, id, itemId, by))}
+                  />
+                </>
+              )}
+
+              {view.kind === 'all' && (
+                <>
+                  <PageHeader
+                    title="All datasets"
+                    subtitle={`${datasets.length} dataset${datasets.length === 1 ? '' : 's'} loaded`}
+                  />
+                  <Suspense
+                    fallback={<p className="text-sm text-slate-500">Loading relationships…</p>}
+                  >
+                    <RelationshipsPage datasets={datasets} resolve={understanding.resolve} />
+                  </Suspense>
+                </>
+              )}
+
+              {selected && (
+                <DatasetPage
+                  dataset={selected}
+                  understanding={understanding}
+                  onRemove={() => handleRemove(selected.id)}
+                  onGenerateRelated={() => setView({ kind: 'upload', baseId: selected.id })}
+                  onIdentifierDismissed={(name, dismissed) =>
+                    handleIdentifierDismissed(selected.datasetId, name, dismissed)
+                  }
+                  onCleaned={(columns, rows, renames, message) =>
+                    handleCleaned(selected.id, columns, rows, renames, message)
+                  }
+                  glossary={glossary}
+                  onAddToGlossary={(column) =>
+                    addColumnToGlossary({ datasetId: selected.datasetId, column })
+                  }
+                  onOpenGlossary={() => setView({ kind: 'glossary' })}
+                />
+              )}
+            </div>
+          </main>
+        </div>
       </div>
-    </div>
+    </DashboardSaveContext.Provider>
   )
 }
 
-function PageHeader({ title, subtitle }: { title: string; subtitle: string }) {
+function PageHeader({ title, subtitle }: { title: string; subtitle: ReactNode }) {
   return (
     <header className="mb-6">
       <h2 className="text-2xl font-semibold">{title}</h2>
@@ -348,13 +813,24 @@ function DatasetPage({
   onGenerateRelated,
   onIdentifierDismissed,
   onCleaned,
+  onAddToGlossary,
+  onOpenGlossary,
+  glossary,
 }: {
   dataset: Dataset
   understanding: ReturnType<typeof useUnderstanding>
   onRemove: () => void
   onGenerateRelated: () => void
   onIdentifierDismissed: (columnName: string, dismissed: boolean) => void
-  onCleaned: (columns: string[], rows: CsvRow[], message: string) => Promise<void>
+  onCleaned: (
+    columns: string[],
+    rows: CsvRow[],
+    renames: Record<string, string>,
+    message: string,
+  ) => Promise<void>
+  onAddToGlossary: (column: string) => void
+  onOpenGlossary: () => void
+  glossary: readonly GlossaryTerm[]
 }) {
   const resolved = understanding.resolve(dataset)
   // Which open dataset "Prepare my data" is showing for; switching datasets closes it.
@@ -370,6 +846,10 @@ function DatasetPage({
       onRemove={onRemove}
       onGenerateRelated={onGenerateRelated}
       onIdentifierDismissed={onIdentifierDismissed}
+      columnDrag={{
+        type: COLUMN_DRAG_TYPE,
+        data: (column) => columnDragData(dataset.datasetId, column.name),
+      }}
       onClean={() => setCleaningId(dataset.id)}
       cleanPanel={
         cleaning && (
@@ -383,8 +863,9 @@ function DatasetPage({
                 resolved.columns.map((c) => [c.name, c.description.value]),
               ),
             }}
-            onApply={async ({ columns, rows }, message) => {
-              await onCleaned(columns, rows, message)
+            glossary={glossary}
+            onApply={async ({ columns, rows, renames }, message) => {
+              await onCleaned(columns, rows, renames, message)
               setCleaningId(null)
             }}
             onClose={() => setCleaningId(null)}
@@ -407,6 +888,8 @@ function DatasetPage({
           column={resolved.columns[column.index]}
           onSave={(change) => update((c) => confirmColumn(c, column.name, change))}
           onRevert={() => update((c) => revertColumn(c, column.name))}
+          onAddToGlossary={() => onAddToGlossary(column.name)}
+          onOpenGlossary={onOpenGlossary}
         />
       )}
     />

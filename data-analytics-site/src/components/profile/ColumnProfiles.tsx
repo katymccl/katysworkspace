@@ -15,12 +15,18 @@ interface ColumnProfilesProps {
   renderDefinition?: (column: ColumnProfile) => ReactNode
   /** Removes (true) or restores (false) a column's potential identifier flag. */
   onIdentifierDismissed?: (columnName: string, dismissed: boolean) => void
+  /**
+   * Makes each card draggable, carrying this drag data (as `dragType`), for dropping a column onto
+   * the glossary.
+   */
+  drag?: { type: string; data: (column: ColumnProfile) => string }
 }
 
 export function ColumnProfiles({
   columns,
   renderDefinition,
   onIdentifierDismissed,
+  drag,
 }: ColumnProfilesProps) {
   if (columns.length === 0) return null
 
@@ -40,6 +46,7 @@ export function ColumnProfiles({
             key={column.index}
             column={column}
             definition={renderDefinition?.(column)}
+            drag={drag && { type: drag.type, data: drag.data(column) }}
             onIdentifierDismissed={
               onIdentifierDismissed && ((dismissed) => onIdentifierDismissed(column.name, dismissed))
             }
@@ -53,14 +60,30 @@ export function ColumnProfiles({
 function ColumnCard({
   column,
   definition,
+  drag,
   onIdentifierDismissed,
 }: {
   column: ColumnProfile
   definition?: ReactNode
+  drag?: { type: string; data: string }
   onIdentifierDismissed?: (dismissed: boolean) => void
 }) {
   return (
-    <article className="flex min-w-0 flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4">
+    <article
+      draggable={drag !== undefined}
+      onDragStart={
+        drag &&
+        ((e) => {
+          e.dataTransfer.setData(drag.type, drag.data)
+          e.dataTransfer.setData('text/plain', column.name)
+          e.dataTransfer.effectAllowed = 'copy'
+        })
+      }
+      title={drag ? 'Drag onto the glossary to add this column as a term' : undefined}
+      className={`flex min-w-0 flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 ${
+        drag ? 'cursor-grab active:cursor-grabbing' : ''
+      }`}
+    >
       <header className="flex items-start justify-between gap-2">
         <h4 className="flex min-w-0 items-center gap-1.5 font-medium text-slate-900">
           <span className="truncate" title={column.name}>

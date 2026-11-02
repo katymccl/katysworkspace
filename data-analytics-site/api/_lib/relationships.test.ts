@@ -46,11 +46,11 @@ const body: RelationshipRequest = {
       from: { dataset: 'staff', column: 'Library ID' },
       to: { dataset: 'libs', column: 'LibraryID' },
       cardinality: 'many-to-one',
-      strength: 'strong',
       sharedCount: 3,
       fromCoverage: 1,
       toCoverage: 0.75,
       namesMatch: true,
+      period: null,
       sharedExamples: ['l-1', 'l-2', 'l-3'],
     },
   ],
@@ -118,7 +118,7 @@ describe('handleRelationships', () => {
     expect(params.messages[0].content).toContain(
       `<rejected_relationships>\n${JSON.stringify(rejected)}\n</rejected_relationships>`,
     )
-    expect(params.system).toContain('never add them as new links')
+    expect(params.system).toContain('never include them')
     expect(relationshipsMessage(body)).not.toContain('rejected_relationships')
   })
 

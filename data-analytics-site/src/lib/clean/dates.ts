@@ -45,14 +45,14 @@ const DAY_NAME_YEAR = new RegExp(`^(\\d{1,2})${ORDINAL}${SEP}([A-Za-z]{3,9})\\.?
 const NAME_DAY_YEAR = new RegExp(`^([A-Za-z]{3,9})\\.?${SEP}(\\d{1,2})${ORDINAL},?${SEP}(\\d{2}|\\d{4})$`)
 
 /** A month from its full name or a short form of at least three letters (`Jan`, `Sept`). */
-function monthNumber(name: string): number | undefined {
+export function monthNumber(name: string): number | undefined {
   const lower = name.toLowerCase()
   const index = MONTHS.findIndex((m) => m === lower || (lower.length >= 3 && m.startsWith(lower)))
   return index === -1 ? undefined : index + 1
 }
 
 /** Two-digit years: 00–69 are 2000s, 70–99 are 1900s. */
-function fullYear(text: string): number {
+export function fullYear(text: string): number {
   const year = Number(text)
   if (text.length === 4) return year
   return year < 70 ? 2000 + year : 1900 + year

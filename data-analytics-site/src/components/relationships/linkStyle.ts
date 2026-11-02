@@ -1,11 +1,10 @@
 import type { CSSProperties } from 'react'
 import type { Cardinality } from '../../lib/relationships/detect'
-import type { DiagramLink } from '../../lib/relationships/merge'
 import type { Verdict } from '../../lib/relationships/schema'
 
 /**
  * How sure we are about a link: the user's decision (confirmed, or marked not related) beats
- * everything, then the AI verdict when there is one, then the value evidence.
+ * everything, then Claude's verdict.
  */
 export type Confidence = 'confirmed' | 'firm' | 'tentative' | 'faint' | 'rejected'
 
@@ -13,16 +12,11 @@ export function linkConfidence(item: {
   verdict: Verdict | null
   confirmed: boolean
   rejected?: boolean
-  strength?: DiagramLink['strength']
-  source?: DiagramLink['source']
 }): Confidence {
   if (item.confirmed) return 'confirmed'
   if (item.rejected) return 'rejected'
   if (item.verdict === 'likely') return 'firm'
   if (item.verdict === 'possible') return 'tentative'
-  if (item.verdict === 'unlikely' || item.source === 'ai') return 'faint'
-  if (item.strength === 'strong') return 'firm'
-  if (item.strength === 'moderate') return 'tentative'
   return 'faint'
 }
 
@@ -52,9 +46,9 @@ export function linkStyle(
 
 export const CONFIDENCE_LABELS: Record<Confidence, string> = {
   confirmed: 'Thick line with ✓: confirmed by you',
-  firm: 'Solid: strong evidence',
+  firm: 'Solid: likely, says Claude',
   tentative: 'Dashed: possible',
-  faint: 'Dotted: weak or AI-only',
+  faint: 'Dotted: unlikely (only shown with hidden links)',
   rejected: '✕: marked not related (only shown with hidden links)',
 }
 

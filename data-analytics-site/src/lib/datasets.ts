@@ -9,6 +9,8 @@ export interface Dataset extends CsvData {
   datasetId: string
   /** How this upload was matched to datasetId. */
   matchedBy: MatchReason
+  /** When it was added to its workspace; keeps the list in order across reloads. */
+  addedAt: string
   /**
    * Computed once on upload; each dataset is profiled independently. Identifier flags the user
    * removed are applied on top.
@@ -19,10 +21,16 @@ export interface Dataset extends CsvData {
 /** What the main panel is showing. */
 export type View =
   | { kind: 'home' }
+  /** Overview: the steps from a file to answers, and how far this workspace has got. */
+  | { kind: 'overview' }
   /** baseId: an open dataset to pre-select as the base for generating a related one. */
   | { kind: 'upload'; baseId?: string }
   | { kind: 'all' }
   | { kind: 'ask' }
+  | { kind: 'explore' }
+  /** id: the dashboard to show; the first when not set. */
+  | { kind: 'dashboards'; id?: string }
+  | { kind: 'glossary' }
   | { kind: 'dataset'; id: string }
 
 export function toDataset(
@@ -31,5 +39,11 @@ export function toDataset(
   dismissedIdentifiers: readonly string[] = [],
 ): Dataset {
   const profile = withDismissedIdentifiers(profileDataset(data), dismissedIdentifiers)
-  return { ...data, ...identity, id: crypto.randomUUID(), profile }
+  return {
+    ...data,
+    ...identity,
+    id: crypto.randomUUID(),
+    addedAt: new Date().toISOString(),
+    profile,
+  }
 }

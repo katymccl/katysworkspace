@@ -1,16 +1,21 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import {
+  BookOpen,
+  ChartLine,
   ChevronDown,
   ChevronRight,
   Database,
   FileSpreadsheet,
+  House,
   Layers,
+  LayoutDashboard,
   MessageSquare,
   Plus,
   Sparkles,
   X,
 } from 'lucide-react'
 import type { Dataset, View } from '../lib/datasets'
+import { COLUMN_DRAG_TYPE, readColumnDrag } from '../lib/glossary'
 import { Wordmark } from './Wordmark'
 
 interface SidebarProps {
@@ -23,6 +28,14 @@ interface SidebarProps {
   onClose?: () => void
   /** Display name for a dataset; defaults to its file name. */
   nameOf?: (dataset: Dataset) => string
+  /** The workspace switcher, shown above everything else. */
+  workspaceSwitcher?: ReactNode
+  /** Terms in the open workspace's glossary. */
+  glossaryCount?: number
+  /** Dashboards in the open workspace. */
+  dashboardCount?: number
+  /** A column dropped onto the Glossary item. */
+  onDropColumn?: (column: { datasetId: string; column: string }) => void
 }
 
 export function Sidebar({
@@ -33,6 +46,10 @@ export function Sidebar({
   onSelect,
   onClose,
   nameOf = (d) => d.fileName,
+  workspaceSwitcher,
+  glossaryCount = 0,
+  dashboardCount = 0,
+  onDropColumn,
 }: SidebarProps) {
   return (
     <aside className="flex h-full w-64 shrink-0 flex-col border-r border-slate-200 bg-white">
@@ -56,14 +73,15 @@ export function Sidebar({
         )}
       </div>
 
+      {workspaceSwitcher}
+
       <nav className="flex-1 overflow-y-auto px-3 pb-4">
         <div className="mb-1">
           <NavItem
-            icon={<MessageSquare className="h-4 w-4" />}
-            label="Ask your data"
-            active={view.kind === 'ask'}
-            disabled={datasets.length === 0}
-            onClick={() => onSelect({ kind: 'ask' })}
+            icon={<House className="h-4 w-4" />}
+            label="Overview"
+            active={view.kind === 'overview'}
+            onClick={() => onSelect({ kind: 'overview' })}
           />
         </div>
         <button
@@ -122,6 +140,35 @@ export function Sidebar({
             </li>
           </ul>
         )}
+        <div className="mt-1 border-t border-slate-100 pt-1">
+          <GlossaryItem
+            count={glossaryCount}
+            active={view.kind === 'glossary'}
+            onClick={() => onSelect({ kind: 'glossary' })}
+            onDropColumn={onDropColumn}
+          />
+          <NavItem
+            icon={<ChartLine className="h-4 w-4" />}
+            label="Explore your data"
+            active={view.kind === 'explore'}
+            disabled={datasets.length === 0}
+            onClick={() => onSelect({ kind: 'explore' })}
+          />
+          <NavItem
+            icon={<MessageSquare className="h-4 w-4" />}
+            label="Ask with AI"
+            active={view.kind === 'ask'}
+            disabled={datasets.length === 0}
+            onClick={() => onSelect({ kind: 'ask' })}
+          />
+          <NavItem
+            icon={<LayoutDashboard className="h-4 w-4" />}
+            label="Dashboards"
+            active={view.kind === 'dashboards'}
+            onClick={() => onSelect({ kind: 'dashboards' })}
+            badge={dashboardCount > 0 ? dashboardCount : undefined}
+          />
+        </div>
       </nav>
     </aside>
   )
@@ -133,9 +180,11 @@ interface NavItemProps {
   active: boolean
   disabled?: boolean
   onClick: () => void
+  /** A count shown at the end, such as how many terms there are. */
+  badge?: number
 }
 
-function NavItem({ icon, label, active, disabled, onClick }: NavItemProps) {
+function NavItem({ icon, label, active, disabled, onClick, badge }: NavItemProps) {
   return (
     <button
       onClick={onClick}
@@ -148,7 +197,52 @@ function NavItem({ icon, label, active, disabled, onClick }: NavItemProps) {
       }`}
     >
       <span className="shrink-0">{icon}</span>
-      <span className="truncate">{label}</span>
+      <span className="flex-1 truncate text-left">{label}</span>
+      {badge !== undefined && (
+        <span className="rounded-full bg-slate-100 px-2 text-xs text-slate-600">{badge}</span>
+      )}
     </button>
+  )
+}
+
+/** The Glossary item, which also takes columns dragged from a dataset's page. */
+function GlossaryItem({
+  count,
+  active,
+  onClick,
+  onDropColumn,
+}: {
+  count: number
+  active: boolean
+  onClick: () => void
+  onDropColumn?: (column: { datasetId: string; column: string }) => void
+}) {
+  const [over, setOver] = useState(false)
+  return (
+    <div
+      onDragOver={(e) => {
+        if (!onDropColumn || !e.dataTransfer.types.includes(COLUMN_DRAG_TYPE)) return
+        e.preventDefault()
+        e.dataTransfer.dropEffect = 'copy'
+        setOver(true)
+      }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => {
+        setOver(false)
+        const column = readColumnDrag(e.dataTransfer.getData(COLUMN_DRAG_TYPE))
+        if (!column || !onDropColumn) return
+        e.preventDefault()
+        onDropColumn(column)
+      }}
+      className={`rounded-lg ${over ? 'bg-sky-50 ring-2 ring-sky-400' : ''}`}
+    >
+      <NavItem
+        icon={<BookOpen className="h-4 w-4" />}
+        label={over ? 'Drop to add to glossary' : 'Glossary'}
+        active={active}
+        onClick={onClick}
+        badge={count > 0 ? count : undefined}
+      />
+    </div>
   )
 }

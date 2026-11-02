@@ -1,3 +1,4 @@
+import { findTerm, type GlossaryTerm } from '../glossary'
 import type { ColumnRole, Confidence, DatasetUnderstanding } from './schema'
 
 /** An AI suggestion as stored: the model output plus where and when it came from. */
@@ -22,7 +23,7 @@ export interface ConfirmedDefinitions {
 export const EMPTY_CONFIRMED: ConfirmedDefinitions = { columns: {} }
 
 /** Where a displayed value came from. */
-export type FieldSource = 'confirmed' | 'suggested' | 'none'
+export type FieldSource = 'confirmed' | 'glossary' | 'suggested' | 'none'
 
 export interface ResolvedField<T> {
   /** What to display: confirmed, else suggested, else null. */
@@ -42,6 +43,8 @@ export interface ResolvedColumn {
   role: ResolvedField<ColumnRole>
   /** The AI's confidence in its own suggestion for this column, if any. */
   confidence: Confidence | null
+  /** The workspace glossary term the column's name matches, if any. */
+  glossaryTerm: GlossaryTerm | null
 }
 
 export interface ResolvedUnderstanding {
@@ -55,21 +58,28 @@ export interface ResolvedUnderstanding {
   questions: DatasetUnderstanding['questions']
 }
 
-function resolve<T>(confirmed: T | undefined, suggestion: T | undefined): ResolvedField<T> {
+function resolve<T>(
+  confirmed: T | undefined,
+  suggestion: T | undefined,
+  glossary?: T,
+): ResolvedField<T> {
   const s = suggestion ?? null
   if (confirmed !== undefined) return { value: confirmed, source: 'confirmed', suggestion: s }
+  if (glossary !== undefined) return { value: glossary, source: 'glossary', suggestion: s }
   return { value: s, source: s === null ? 'none' : 'suggested', suggestion: s }
 }
 
 /**
- * Combines AI suggestions with confirmed definitions. Confirmed values always win; suggestions
- * show immediately where nothing is confirmed. Pure.
+ * Combines AI suggestions, the workspace glossary and confirmed definitions. For each value:
+ * confirmed for this dataset, else the glossary term the column's name matches, else the AI's
+ * suggestion. Pure.
  */
 export function resolveUnderstanding(
   fileName: string,
   columnNames: readonly string[],
   suggestion: DatasetUnderstanding | null,
   confirmed: ConfirmedDefinitions,
+  glossary: readonly GlossaryTerm[] = [],
 ): ResolvedUnderstanding {
   const suggestedColumns = new Map(suggestion?.columns.map((c) => [c.name, c]) ?? [])
   const name = resolve(confirmed.name, suggestion?.suggestedName)
@@ -82,11 +92,14 @@ export function resolveUnderstanding(
     columns: columnNames.map((columnName) => {
       const s = suggestedColumns.get(columnName)
       const c = confirmed.columns[columnName]
+      const g = findTerm(glossary, columnName)
       return {
         name: columnName,
-        description: resolve(c?.description, s?.description),
-        role: resolve(c?.role, s?.role),
+        // An empty glossary description leaves the column's own suggestion showing.
+        description: resolve(c?.description, s?.description, g?.description || undefined),
+        role: resolve(c?.role, s?.role, g?.role ?? undefined),
         confidence: s?.confidence ?? null,
+        glossaryTerm: g,
       }
     }),
     rowKeyColumns: suggestion?.rowKeyColumns ?? [],
@@ -189,4 +202,27 @@ export function acceptAllSuggestions(
 /** How many displayed items the user has confirmed, counted like countPendingSuggestions. */
 export function countConfirmed(resolved: ResolvedUnderstanding): number {
   return countItems(resolved, 'confirmed')
+}
+
+/**
+ * The confirmed definitions with glossary meanings filled in for columns the user hasn't confirmed
+ * themselves, so Claude treats both as settled when interpreting the dataset.
+ */
+export function withGlossary(
+  confirmed: ConfirmedDefinitions,
+  columnNames: readonly string[],
+  glossary: readonly GlossaryTerm[],
+): ConfirmedDefinitions {
+  const columns = { ...confirmed.columns }
+  for (const name of columnNames) {
+    const g = findTerm(glossary, name)
+    if (!g) continue
+    const own = columns[name] ?? {}
+    columns[name] = {
+      ...(g.description && { description: g.description }),
+      ...(g.role && { role: g.role }),
+      ...own,
+    }
+  }
+  return { ...confirmed, columns }
 }

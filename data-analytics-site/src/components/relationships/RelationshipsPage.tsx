@@ -89,10 +89,10 @@ export function RelationshipsPage({ datasets, resolve }: RelationshipsPageProps)
           <div className="min-w-0 flex-1">
             <h3 className="font-medium text-slate-900">How these datasets connect</h3>
             <p className="mt-0.5 text-xs text-slate-500">
-              Links come from values the datasets share, found in your browser.
               {hasAnalysis
-                ? ' Claude has judged them and explained what they mean.'
-                : ' Ask Claude to judge them and explain what they mean.'}
+                ? 'Claude picked these links from what the columns mean and how their values overlap, measured in your browser.'
+                : 'Claude looks at what the columns mean and how their values overlap, measured in your browser, and picks the links.'}{' '}
+              Confirm the ones you agree with, mark others not related, or draw your own.
             </p>
           </div>
           <button
@@ -107,11 +107,16 @@ export function RelationshipsPage({ datasets, resolve }: RelationshipsPageProps)
             ) : (
               <Sparkles className="h-4 w-4" aria-hidden />
             )}
-            {loading ? 'Explaining…' : hasAnalysis ? 'Re-run AI' : 'Explain with AI'}
+            {loading
+              ? 'Finding links…'
+              : hasAnalysis
+                ? 'Ask Claude again'
+                : 'Find relationships with Claude'}
           </button>
           <p className="w-full text-xs text-slate-400">
-            Explaining sends dataset names, descriptions, column details and a few shared values to
-            Claude. The files themselves stay in your browser.
+            Finding links sends dataset names, descriptions, column details, how much columns'
+            values overlap and a few shared values to Claude. The files themselves stay in your
+            browser.
           </p>
         </div>
 
@@ -126,7 +131,7 @@ export function RelationshipsPage({ datasets, resolve }: RelationshipsPageProps)
                 {state.error.message} {ERROR_HINTS[state.error.code] ?? ''}
               </p>
               <p className="mt-0.5 text-xs text-red-600">
-                The links below come from the data itself and are still accurate.
+                Links you confirmed or drew are still shown below.
               </p>
             </div>
             {state.error.code !== 'not_configured' && (
@@ -203,9 +208,10 @@ export function RelationshipsPage({ datasets, resolve }: RelationshipsPageProps)
 
       {links.length === 0 && similar.length === 0 ? (
         <p className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-6 text-center text-sm text-slate-500">
-          No shared values were found between these datasets.
-          {!hasAnalysis && ' Claude may still spot links from what the columns mean.'} You can
-          also connect two columns yourself with “Draw a link”.
+          {hasAnalysis
+            ? 'Claude didn’t find any links between these datasets.'
+            : 'No links yet. Ask Claude to find them with “Find relationships with Claude”.'}{' '}
+          You can also connect two columns yourself with “Draw a link”.
         </p>
       ) : (
         <section>

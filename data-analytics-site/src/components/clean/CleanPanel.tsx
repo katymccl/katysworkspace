@@ -27,11 +27,14 @@ import {
   type CleanContext,
 } from '../../lib/clean/request'
 import { CLEAN_LIMITS, type CleanSuggestions } from '../../lib/clean/schema'
-import { keptNames } from '../../lib/clean/split'
+import { effectiveRenames, renameProblems } from '../../lib/clean/rename'
+import { keptNames, splitColumns } from '../../lib/clean/split'
+import type { GlossaryTerm } from '../../lib/glossary'
 import type { CsvRow } from '../../lib/parseCsv'
 import { isMissing } from '../../lib/profiling'
 import type { UnderstandingError } from '../../lib/understanding'
 import { linkButton, primaryButton, quietButton } from '../understanding/styles'
+import { ColumnNames } from './ColumnNames'
 import { SplitColumn } from './SplitColumn'
 
 const PAGE = 10
@@ -45,8 +48,16 @@ const EXPECTED_LABEL: Record<ExpectedKind, string> = {
 interface CleanPanelProps {
   dataset: Dataset
   context: CleanContext
-  /** Saves the cleaned columns and rows as the dataset's new version. */
-  onApply: (cleaned: { columns: string[]; rows: CsvRow[] }, summary: string) => Promise<void>
+  /** The workspace glossary, whose terms are offered as column names. */
+  glossary?: readonly GlossaryTerm[]
+  /**
+   * Saves the cleaned columns and rows as the dataset's new version; `renames` (new names by old)
+   * lets what refers to the old names follow.
+   */
+  onApply: (
+    cleaned: { columns: string[]; rows: CsvRow[]; renames: Record<string, string> },
+    summary: string,
+  ) => Promise<void>
   onClose: () => void
 }
 
@@ -65,7 +76,7 @@ const NO_SUGGESTIONS: SuggestState = { status: 'idle', fixes: new Map(), standar
  * their column and date columns written several ways; the user decides what to change. Claude can suggest fixes for the flagged cells,
  * but nothing changes until the user applies it, and then only as a new version in this browser.
  */
-export function CleanPanel({ dataset, context, onApply, onClose }: CleanPanelProps) {
+export function CleanPanel({ dataset, context, glossary = [], onApply, onClose }: CleanPanelProps) {
   const { columns, rows, profile } = dataset
   const issues = useMemo(() => findIssues(columns, rows, profile), [columns, rows, profile])
   const [edits, setEdits] = useState<CleanEdits>(NO_EDITS)
@@ -76,7 +87,24 @@ export function CleanPanel({ dataset, context, onApply, onClose }: CleanPanelPro
   const duplicateCount = issues.duplicates.reduce((n, d) => n + d.copies.length, 0)
   const missingCount = issues.missing.reduce((n, m) => n + m.rows.length, 0)
   const { changedValues, removedRows } = summariseEdits(rows, issues, edits)
-  const hasChanges = changedValues > 0 || removedRows > 0 || edits.splits.length > 0
+  // Columns can be renamed as they'll be after any splits.
+  const renamable = useMemo(() => splitColumns(columns, edits.splits), [columns, edits.splits])
+  // Removals of columns that a split has since taken away no longer count.
+  const removedColumns = edits.removeColumns.filter((c) => renamable.includes(c))
+  const kept = renamable.filter((c) => !removedColumns.includes(c))
+  const renames = effectiveRenames(edits.renames, kept)
+  const renameCount = Object.keys(renames).length
+  const problems: Record<string, string> = {
+    ...renameProblems(kept, edits.renames),
+    ...(kept.length === 0 && { '*': 'Keep at least one column.' }),
+  }
+  const hasProblems = Object.keys(problems).length > 0
+  const hasChanges =
+    changedValues > 0 ||
+    removedRows > 0 ||
+    edits.splits.length > 0 ||
+    renameCount > 0 ||
+    removedColumns.length > 0
   const removed = removedRowSet(issues, edits)
   const picked = new Set(edits.removeRows)
   const onToggleRemove = (list: number[]) => setEdits((e) => toggleRemoved(e, list))
@@ -140,6 +168,8 @@ export function CleanPanel({ dataset, context, onApply, onClose }: CleanPanelPro
       removedRows > 0 && `removed ${plural(removedRows, 'row')}`,
       changedValues > 0 && `changed ${plural(changedValues, 'value')}${datesNote}`,
       ...edits.splits.map((s) => `split ${s.column} into ${keptNames(s).join(', ')}`),
+      removedColumns.length > 0 && `removed ${plural(removedColumns.length, 'column')} (${removedColumns.join(', ')})`,
+      ...Object.entries(renames).map(([from, to]) => `renamed ${from} to ${to}`),
     ].filter(Boolean)
     await onApply(
       applyAll(columns, rows, issues, edits),
@@ -381,14 +411,32 @@ export function CleanPanel({ dataset, context, onApply, onClose }: CleanPanelPro
         />
       </div>
 
+      <div className="border-t border-slate-100 pt-4">
+        <ColumnNames
+          columns={renamable}
+          renames={edits.renames}
+          removed={removedColumns}
+          problems={problems}
+          glossary={glossary}
+          onRename={(next) => setEdits((e) => ({ ...e, renames: next }))}
+          onRemove={(next) => setEdits((e) => ({ ...e, removeColumns: next }))}
+        />
+      </div>
+
       <div className="sticky bottom-0 -mx-5 -mb-5 flex flex-wrap items-center justify-between gap-3 rounded-b-xl border-t border-slate-200 bg-white/95 px-5 py-3 backdrop-blur">
-        <p className="text-sm text-slate-600" aria-live="polite">
-          {hasChanges
+        <p className={`text-sm ${hasProblems ? 'text-red-700' : 'text-slate-600'}`} aria-live="polite">
+          {hasProblems
+            ? kept.length === 0
+              ? 'Keep at least one column to apply your changes.'
+              : 'Fix the column names marked above to apply your changes.'
+            : hasChanges
             ? capitalise(
                 [
                   removedRows > 0 && `remove ${plural(removedRows, 'row')}`,
                   changedValues > 0 && `change ${plural(changedValues, 'value')}${datesNote}`,
                   edits.splits.length > 0 && `split ${plural(edits.splits.length, 'column')}`,
+                  removedColumns.length > 0 && `remove ${plural(removedColumns.length, 'column')}`,
+                  renameCount > 0 && `rename ${plural(renameCount, 'column')}`,
                 ]
                   .filter(Boolean)
                   .join(', '),
@@ -403,7 +451,7 @@ export function CleanPanel({ dataset, context, onApply, onClose }: CleanPanelPro
           )}
           <button
             onClick={apply}
-            disabled={!hasChanges || applying}
+            disabled={!hasChanges || hasProblems || applying}
             className={`${primaryButton} inline-flex items-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-50`}
           >
             {applying && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}

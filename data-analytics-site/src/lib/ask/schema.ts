@@ -6,7 +6,7 @@
  * browser runs against the full data (see ./execute.ts).
  */
 import { z } from 'zod'
-import { COLUMN_ROLES, OUTPUT_LIMITS, REQUEST_LIMITS } from '../understanding/schema.js'
+import { COLUMN_ROLES, MAX_TERM_VALUES, OUTPUT_LIMITS, REQUEST_LIMITS } from '../understanding/schema.js'
 
 export const ASK_LIMITS = {
   maxQuestionLength: 500,
@@ -40,7 +40,8 @@ export type Aggregate = (typeof AGGREGATES)[number]
 export const DATE_BUCKETS = ['none', 'year', 'quarter', 'month', 'week', 'day'] as const
 export type DateBucket = (typeof DATE_BUCKETS)[number]
 
-export const CHART_TYPES = ['none', 'bar', 'line'] as const
+export const CHART_TYPES = ['none', 'bar', 'line', 'pie', 'heatmap'] as const
+export type ChartType = (typeof CHART_TYPES)[number]
 
 const text = (max: number = REQUEST_LIMITS.maxTextLength) => z.string().max(max)
 const columnRef = z.object({ dataset: text(), column: text() }).strict()
@@ -74,6 +75,13 @@ export const AskRequestSchema = z
                     ]),
                     role: z.enum(COLUMN_ROLES).optional(),
                     description: text(OUTPUT_LIMITS.columnDescription).optional(),
+                    /** The workspace glossary term the column follows, if any. */
+                    glossaryTerm: text().optional(),
+                    /** The values the glossary says the column can take. */
+                    glossaryValues: z
+                      .array(text(REQUEST_LIMITS.maxValueLength))
+                      .max(MAX_TERM_VALUES)
+                      .optional(),
                     distinctCount: z.number().int().nonnegative(),
                     /** A few real values, so filters can match how the data is written. */
                     examples: z
@@ -174,6 +182,9 @@ export const AskAnswerSchema = z.object({
     type: z.enum(CHART_TYPES),
     x: z.string().describe('Heading of the result column for categories or time'),
     y: z.string().describe('Heading of the numeric result column'),
+    by: z
+      .string()
+      .describe('For a heatmap: heading of the second category or period column; otherwise empty'),
   }),
 })
 export type AskAnswer = z.infer<typeof AskAnswerSchema>
@@ -203,7 +214,7 @@ export function reconcilePlan(raw: AskAnswer, request: AskRequest): AskAnswer {
     answerable: false,
     message: message || why,
     plan: emptyPlan(request.datasets[0]?.key ?? ''),
-    chart: { type: 'none', x: '', y: '' },
+    chart: { type: 'none', x: '', y: '', by: '' },
   })
   if (!raw.answerable) return unanswerable("These datasets can't answer that question.")
 
@@ -277,14 +288,21 @@ export function reconcilePlan(raw: AskAnswer, request: AskRequest): AskAnswer {
     return true
   })
 
+  // A heatmap needs every combination to fill its grid, so it shows as many rows as allowed.
   const limit =
     p.limit > 0
       ? Math.min(Math.floor(p.limit), ASK_LIMITS.maxResultRows)
-      : ASK_LIMITS.defaultResultRows
-  const chart =
-    raw.chart.type !== 'none' && labels.has(raw.chart.x) && labels.has(raw.chart.y)
-      ? raw.chart
-      : { type: 'none' as const, x: '', y: '' }
+      : raw.chart.type === 'heatmap'
+        ? ASK_LIMITS.maxResultRows
+        : ASK_LIMITS.defaultResultRows
+  // The chart type stays even when its headings don't match; resolveChart picks columns that fit.
+  const heading = (label: string) => (labels.has(label) ? label : '')
+  const chart = {
+    type: raw.chart.type,
+    x: heading(raw.chart.x),
+    y: heading(raw.chart.y),
+    by: heading(raw.chart.by),
+  }
 
   return {
     answerable: true,

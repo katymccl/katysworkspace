@@ -60,6 +60,8 @@ export const RelationshipRequestSchema = z
                     ]),
                     role: z.enum(COLUMN_ROLES).optional(),
                     description: text(OUTPUT_LIMITS.columnDescription).optional(),
+                    /** The workspace glossary term the column follows, if any. */
+                    glossaryTerm: text().optional(),
                     isPotentialIdentifier: z.boolean(),
                     distinctCount: z.number().int().nonnegative(),
                   })
@@ -81,11 +83,11 @@ export const RelationshipRequestSchema = z
               from: columnRef,
               to: columnRef,
               cardinality: z.enum(CARDINALITIES),
-              strength: z.enum(['strong', 'moderate', 'weak']),
               sharedCount: z.number().int().nonnegative(),
               fromCoverage: ratio,
               toCoverage: ratio,
               namesMatch: z.boolean(),
+              period: z.enum(['date', 'month', 'quarter', 'year', 'month-name']).nullable(),
               sharedExamples: z
                 .array(text(REQUEST_LIMITS.maxValueLength))
                 .max(REQUEST_LIMITS.maxValuesPerColumn),
@@ -120,7 +122,7 @@ export const RelationshipAnalysisSchema = z.object({
     z.object({
       candidateId: z
         .string()
-        .describe('The id of the candidate this judges, or an empty string for a new link'),
+        .describe('The id of the measured overlap this link uses, or an empty string if none'),
       from: z.object({ dataset: z.string(), column: z.string() }),
       to: z.object({ dataset: z.string(), column: z.string() }),
       verdict: z.enum(VERDICTS),

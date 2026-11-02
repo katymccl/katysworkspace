@@ -22,6 +22,7 @@ const RegistryRecord = z.array(
     contentFingerprints: z.array(z.string()),
     firstSeenAt: z.string(),
     lastSeenAt: z.string(),
+    workspaceId: z.string().optional(),
   }),
 )
 

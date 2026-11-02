@@ -5,14 +5,14 @@ import { toCsvText } from '../lib/generate/client'
 import { formatBytes } from '../lib/parseCsv'
 import type { ColumnProfile } from '../lib/profiling'
 import { ColumnProfiles } from './profile/ColumnProfiles'
+import { DataTable } from './preview/DataTable'
 import { formatPercent } from './profile/format'
 import { IdentifierStar } from './profile/IdentifierStar'
-import { describeReason, identifierLabel } from './profile/identifierReasons'
+import { describeReason } from './profile/identifierReasons'
 import { ProfileSummary } from './profile/ProfileSummary'
 import { TypeBadge } from './profile/TypeBadge'
 import { TYPE_META } from './profile/typeMeta'
 
-const PREVIEW_ROWS = 100
 const TOOLTIP_WIDTH = 240
 
 interface CsvPreviewProps {
@@ -23,6 +23,8 @@ interface CsvPreviewProps {
   about?: ReactNode
   /** Extra content for each column card, e.g. the column's meaning. */
   renderDefinition?: (column: ColumnProfile) => ReactNode
+  /** Makes column cards draggable (onto the glossary). */
+  columnDrag?: { type: string; data: (column: ColumnProfile) => string }
   onRemove: () => void
   /** Opens the generator with this dataset as the base. */
   onGenerateRelated?: () => void
@@ -43,13 +45,13 @@ export function CsvPreview({
   title,
   about,
   renderDefinition,
+  columnDrag,
   onRemove,
   onGenerateRelated,
   onIdentifierDismissed,
   onClean,
   cleanPanel,
 }: CsvPreviewProps) {
-  const shown = data.rows.slice(0, PREVIEW_ROWS)
   const { profile } = data
   const [tip, setTip] = useState<HeaderTip | null>(null)
 
@@ -186,56 +188,20 @@ export function CsvPreview({
         columns={profile.columns}
         renderDefinition={renderDefinition}
         onIdentifierDismissed={onIdentifierDismissed}
+        drag={columnDrag}
       />
 
       <div>
         <h3 className="mb-3 font-medium text-slate-900">Data preview</h3>
-        <div
-          className="max-h-[60vh] overflow-auto rounded-xl border border-slate-200 bg-white"
-          onScroll={() => setTip(null)}
-        >
-          <table className="min-w-full text-left text-sm">
-            <thead className="sticky top-0 bg-slate-100">
-              <tr>
-                {profile.columns.map((column) => (
-                  <th
-                    key={column.index}
-                    tabIndex={0}
-                    aria-describedby={tip?.column === column ? 'header-tip' : undefined}
-                    onMouseEnter={(e) => showTip(column, e.currentTarget)}
-                    onMouseLeave={() => setTip(null)}
-                    onFocus={(e) => showTip(column, e.currentTarget)}
-                    onBlur={() => setTip(null)}
-                    className="cursor-default whitespace-nowrap px-4 py-2 font-semibold hover:bg-slate-200 focus:bg-slate-200 focus:outline-none"
-                  >
-                    <span className="flex items-center gap-1.5">
-                      {column.name}
-                      {column.isPotentialIdentifier && (
-                        <IdentifierStar label={identifierLabel(column)} />
-                      )}
-                    </span>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {shown.map((row, i) => (
-                <tr key={i} className="border-t border-slate-100 odd:bg-white even:bg-slate-50">
-                  {data.columns.map((col) => (
-                    <td key={col} className="whitespace-nowrap px-4 py-2">
-                      {row[col]}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {data.rows.length > PREVIEW_ROWS && (
-          <p className="mt-2 text-sm text-slate-500">
-            Showing the first {PREVIEW_ROWS} of {data.rows.length.toLocaleString()} rows.
-          </p>
-        )}
+        <DataTable
+          key={data.id}
+          datasetId={data.datasetId}
+          fileName={data.fileName}
+          columns={profile.columns}
+          rows={data.rows}
+          columnDrag={columnDrag}
+          onHeaderTip={(column, target) => (column && target ? showTip(column, target) : setTip(null))}
+        />
       </div>
 
       {tip && <HeaderTooltip {...tip} />}

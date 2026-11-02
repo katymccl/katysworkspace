@@ -1,4 +1,4 @@
-import { ArrowRight, Database } from 'lucide-react'
+import { ArrowRight, Database, House } from 'lucide-react'
 import semaMark from '../assets/sema-mark.png'
 import { Wordmark } from './Wordmark'
 
@@ -6,10 +6,11 @@ interface HomeProps {
   datasetCount: number
   onUpload: () => void
   onViewDatasets: () => void
+  onOpenOverview: () => void
 }
 
 /** Follows the brand's "primary logo (large)" lockup: wordmark and tagline left, mark right. */
-export function Home({ datasetCount, onUpload, onViewDatasets }: HomeProps) {
+export function Home({ datasetCount, onUpload, onViewDatasets, onOpenOverview }: HomeProps) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-white px-6 py-16">
       <div className="flex flex-col-reverse items-center gap-10 md:flex-row md:gap-16">
@@ -37,6 +38,10 @@ export function Home({ datasetCount, onUpload, onViewDatasets }: HomeProps) {
                 View {datasetCount} dataset{datasetCount === 1 ? '' : 's'}
               </button>
             )}
+            <button onClick={onOpenOverview} className="flex items-center gap-2 rounded-full border border-slate-200 px-6 py-3 font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2">
+              <House className="h-4 w-4" />
+              Overview
+            </button>
           </div>
         </div>
 

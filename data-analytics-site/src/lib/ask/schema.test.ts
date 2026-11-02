@@ -22,7 +22,7 @@ const ref = (dataset: string, column: string) => ({ dataset, column })
 
 const answer = (
   plan: Partial<AskAnswer['plan']>,
-  chart: AskAnswer['chart'] = { type: 'none', x: '', y: '' },
+  chart: AskAnswer['chart'] = { type: 'none', x: '', y: '', by: '' },
 ): AskAnswer => ({
   answerable: true,
   message: ' Shows things. ',
@@ -70,7 +70,7 @@ describe('reconcilePlan', () => {
     expect(out.plan.select.map((s) => s.label)).toEqual(['Y'])
   })
 
-  it('makes labels unique and drops sorts and charts on unknown headings', () => {
+  it('makes labels unique, drops sorts on unknown headings and clears unknown chart headings', () => {
     const out = reconcilePlan(
       answer(
         {
@@ -86,7 +86,7 @@ describe('reconcilePlan', () => {
           ],
           limit: 5000,
         },
-        { type: 'bar', x: 'X', y: 'Missing' },
+        { type: 'bar', x: 'X', y: 'Missing', by: 'Nope' },
       ),
       request,
     )
@@ -94,7 +94,8 @@ describe('reconcilePlan', () => {
     expect(out.plan.select).toEqual([])
     expect(out.plan.sort).toEqual([{ label: 'X (2)', direction: 'descending' }])
     expect(out.plan.limit).toBe(ASK_LIMITS.maxResultRows)
-    expect(out.chart.type).toBe('none')
+    // The chart is kept; a heading that isn't in the result is cleared for the browser to fill.
+    expect(out.chart).toEqual({ type: 'bar', x: 'X', y: '', by: '' })
   })
 
   it('keeps one value per filter except one_of, and drops filters with no value', () => {

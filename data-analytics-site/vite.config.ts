@@ -14,6 +14,8 @@ const API_ROUTES = {
   '/api/ask': { module: '/api/_lib/ask.ts', handler: 'handleAsk' },
   '/api/questions': { module: '/api/_lib/questions.ts', handler: 'handleSuggestQuestions' },
   '/api/clean': { module: '/api/_lib/clean.ts', handler: 'handleClean' },
+  '/api/files': { module: '/api/_lib/files.ts', handler: 'handleFiles' },
+  '/api/analyse': { module: '/api/_lib/analyse.ts', handler: 'handleAnalyse' },
 } as const
 
 function apiDevMiddleware(): Plugin {
@@ -77,7 +79,7 @@ function readBody(req: IncomingMessage): Promise<string> {
 export default defineConfig(({ mode }) => {
   // Server-only secrets from .env.local (never VITE_-prefixed, so never bundled for the browser).
   const env = loadEnv(mode, process.cwd(), '')
-  for (const name of ['ANTHROPIC_API_KEY', 'SEMA_AI_MODEL']) {
+  for (const name of ['ANTHROPIC_API_KEY', 'SEMA_AI_MODEL', 'SEMA_ASK_MODEL']) {
     // Only copy real values: assigning undefined to process.env stores the string "undefined".
     if (env[name] && !process.env[name]) process.env[name] = env[name]
   }
